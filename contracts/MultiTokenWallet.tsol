@@ -1,0 +1,239 @@
+pragma ever-solidity >= 0.58.0;
+
+pragma AbiHeader expire;
+pragma AbiHeader time;
+pragma AbiHeader pubkey;
+
+import "./abstract/MultiTokenWalletBase.tsol";
+
+import "./interfaces/callbacks/IMultiTokenTransferCallback.tsol";
+
+contract MultiTokenWallet is MultiTokenWalletBase {
+    constructor() public {
+        revert();
+    }
+
+    function onDeployRetry(
+        TvmCell,
+        TvmCell,
+        address sender,
+        address remainingGasTo
+    )
+        external
+        view
+        functionID(0x60903B64)
+    {
+        require(
+            msg.sender == _collection || address(tvm.hash(_buildWalletState(sender))) == msg.sender,
+            MultiTokenErrors.SENDER_NOT_COLLECTION
+        );
+
+        tvm.rawReserve(0, 4);
+
+        if (remainingGasTo.value != 0 && remainingGasTo != address(this)) {
+            remainingGasTo.transfer({
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
+                bounce: false
+            });
+        }
+    }
+
+    function destroy(address remainingGasTo)
+        external
+        override
+        virtual
+        onlyOwner
+    {
+        require(_balance == 0, MultiTokenErrors.NON_EMPTY_BALANCE);
+
+        _destructIndex(remainingGasTo);
+        selfdestruct(remainingGasTo);
+    }
+
+    function onCodeUpgrade(TvmCell data) private {
+        tvm.resetStorage();
+
+		MultiTokenWalletPlatformData platformData = abi.decode(data, MultiTokenWalletPlatformData);
+		MultiTokenWalletData walletData = abi.decode(platformData.params, MultiTokenWalletData);
+
+        _initWalletBase(platformData, walletData);
+        _initWalletDestroyable();
+        _initIndexes(walletData);
+    }
+
+    function transfer(
+        uint128 count,
+        address recipient,
+        uint128 deployTokenWalletValue,
+        address remainingGasTo,
+        bool notify,
+        TvmCell payload
+    )
+        external
+        override
+        virtual
+        onlyOwner
+    {
+        require(count > 0, MultiTokenErrors.WRONG_COUNT);
+        require(count <= _balance, MultiTokenErrors.NOT_ENOUGH_BALANCE);
+        require(recipient.value != 0 && recipient != _owner, MultiTokenErrors.WRONG_RECIPIENT);
+
+        tvm.rawReserve(0, 4);
+
+        TvmCell walletState = _buildWalletState(recipient);
+
+        address recipientToken;
+
+        if (deployTokenWalletValue > 0) {
+            recipientToken = _deployWallet(
+                walletState,
+                deployTokenWalletValue,
+                remainingGasTo
+            );
+        } else {
+            recipientToken = address(tvm.hash(walletState));
+        }
+
+        _balance -= count;
+
+        _afterTokenTransfer(count, recipient, remainingGasTo);
+
+        IMultiTokenWallet(recipientToken)
+            .acceptTransfer{
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED,
+                bounce: true
+            }(
+                count,
+                _owner,
+                remainingGasTo,
+                notify,
+                payload
+            );
+    }
+
+    function transferToWallet(
+        uint128 count,
+        address recipientToken,
+        address remainingGasTo,
+        bool notify,
+        TvmCell payload
+    )
+        external
+        override
+        virtual
+        onlyOwner
+    {
+        require(count > 0, MultiTokenErrors.WRONG_COUNT);
+        require(count <= _balance, MultiTokenErrors.NOT_ENOUGH_BALANCE);
+        require(recipientToken.value != 0 && recipientToken != address(this), MultiTokenErrors.WRONG_RECIPIENT);
+
+        tvm.rawReserve(0, 4);
+
+        _balance -= count;
+
+        _afterTokenTransfer(count, recipientToken, remainingGasTo);
+
+        IMultiTokenWallet(recipientToken)
+            .acceptTransfer{
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED,
+                bounce: true
+            }(
+                count,
+                _owner,
+                remainingGasTo,
+                notify,
+                payload
+            );
+    }
+
+    function acceptTransfer(
+        uint128 count,
+        address sender,
+        address remainingGasTo,
+        bool notify,
+        TvmCell payload
+    )
+        external
+        override
+        virtual
+    {
+        require(
+            msg.sender == address(tvm.hash(_buildWalletState(sender))),
+            MultiTokenErrors.SENDER_IS_NOT_VALID_TOKEN
+        );
+
+        tvm.rawReserve(0, 4);
+
+        _balance += count;
+
+        _afterTokenTransfer(count, _owner, remainingGasTo);
+
+        emit MultiTokenTransferred({
+            sender: sender,
+            senderWallet: msg.sender,
+            recipient: _owner,
+            count: count,
+            newBalance: _balance
+        });
+
+        if (notify) {
+            IMultiTokenTransferCallback(_owner)
+                .onMultiTokenTransfer{
+                    value: 0,
+                    flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
+                    bounce: false
+                }(
+                    _collection,
+                    _id,
+                    count,
+                    sender,
+                    msg.sender,
+                    remainingGasTo,
+                    payload
+                );
+        } else {
+            remainingGasTo.transfer({
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
+                bounce: false
+            });
+        }
+    }
+
+    function burn(
+        uint128 count,
+        address remainingGasTo,
+        address callbackTo,
+        TvmCell payload
+    )
+        external
+        override
+        virtual
+        onlyOwner
+    {
+        require(count > 0, MultiTokenErrors.WRONG_COUNT);
+        require(count <= _balance, MultiTokenErrors.NOT_ENOUGH_BALANCE);
+
+        tvm.rawReserve(0, 4);
+
+        _balance -= count;
+        _afterTokenBurn(count, remainingGasTo);
+
+        IMultiTokenAcceptBurnCallback(_collection)
+            .onMultiTokenAcceptBurn{
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED,
+                bounce: true
+            }(
+                count,
+                _id,
+                _owner,
+                remainingGasTo,
+                callbackTo,
+                payload
+            );
+    }
+}

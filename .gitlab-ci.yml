@@ -1,0 +1,53 @@
+image: node:18.13.0-bullseye
+
+stages:
+  - prepare
+  - lint
+  - build
+  - test
+
+prepare-job:
+  stage: prepare
+  script:
+    - mv .env.template .env
+    - git config --global url.https://github.com/.insteadOf git://github.com/
+    - npm ci
+    - echo "Prepare is completed"
+  artifacts:
+    paths:
+      - .env
+      - node_modules
+      - locklift.config.ts
+
+lint-job:
+  stage: lint
+  script:
+    - npm run lint
+    - echo "Lint is completed"
+  needs:
+    - job: prepare-job
+      artifacts: true
+
+build-job:
+  stage: build
+  script:
+    - npm run build
+    - echo "Build is completed"
+  needs:
+    - job: prepare-job
+      artifacts: true
+    - job: lint-job
+  artifacts:
+    paths:
+      - build
+
+test-job:
+  stage: test
+  script:
+    - npm run test:nb
+    - echo "Test is completed"
+  needs:
+    - job: prepare-job
+      artifacts: true
+    - job: build-job
+      artifacts: true

@@ -1,11 +1,41 @@
-node_modules
+# compiled output
+/node_modules
+/build
+/.cache
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*-log.json
+/deployments
+
+# Configs
+.env
+
+# OS
 .DS_Store
 
-#KEYS
-*.key
-node_modules/
-.idea/
-locklift.config.ts
-migration-log.json
+# Tests
+/coverage
+/.nyc_output
 
-build/Index*
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

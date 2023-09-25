@@ -1,0 +1,13 @@
+pragma ever-solidity >= 0.58.0;
+
+library MultiTokenGas {
+    uint128 constant TARGET_COLLECTION_BALANCE  = 0.5 ever;
+    uint128 constant TARGET_WALLET_BALANCE      = 0.3 ever;
+    uint128 constant TARGET_NFT_BALANCE         = 0.3 ever;
+
+    uint128 constant NFT_DEPLOY_VALUE           = 0.8 ever;
+    uint128 constant WALLET_DEPLOY_VALUE        = 0.8 ever;
+
+    uint128 constant INDEX_DEPLOY_VALUE         = 0.15 ever;
+    uint128 constant INDEX_DESTROY_VALUE        = 0.05 ever;
+}

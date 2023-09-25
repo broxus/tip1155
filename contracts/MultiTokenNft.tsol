@@ -1,0 +1,80 @@
+pragma ever-solidity >= 0.58.0;
+
+pragma AbiHeader expire;
+pragma AbiHeader time;
+pragma AbiHeader pubkey;
+
+import "@broxus/ever-contracts/contracts/libraries/MsgFlag.tsol";
+import "@broxus/tip4/contracts/Nft.tsol";
+
+import "./interfaces/IMultiTokenNft.tsol";
+
+import "./libraries/MultiTokenErrors.tsol";
+import "./libraries/MultiTokenGas.tsol";
+
+contract MultiTokenNft is Nft, IMultiTokenNft {
+    uint128 internal _tokenSupply;
+
+    modifier onlyCollection() {
+        require(
+            msg.sender == _collection && msg.sender.value != 0,
+            MultiTokenErrors.SENDER_NOT_COLLECTION
+        );
+        _;
+    }
+
+    constructor(
+        address owner,
+        address sendGasTo,
+        uint128 remainOnNft,
+        string json,
+        TvmCell codeIndex,
+        uint128 tokenSupply
+    ) Nft(
+        owner,
+        sendGasTo,
+        remainOnNft,
+        json,
+        MultiTokenGas.INDEX_DEPLOY_VALUE,
+        MultiTokenGas.INDEX_DESTROY_VALUE,
+        codeIndex
+    ) public {
+        _tokenSupply = tokenSupply;
+        _supportedInterfaces[bytes4(tvm.functionId(IMultiTokenNft.multiTokenSupply))] = true;
+    }
+
+    function multiTokenSupply()
+        external
+        view
+        override
+        responsible
+        returns (uint128 count)
+    {
+        return {
+            value: 0,
+            flag: MsgFlag.REMAINING_GAS,
+            bounce: false
+        } _tokenSupply;
+    }
+
+    function burnToken(
+        uint128 count,
+        uint256 /*id*/,
+        address /*owner*/,
+        TvmCell payload
+    )
+        external
+        override
+        responsible
+        onlyCollection
+        returns (uint128 tokenSupply, TvmCell next)
+    {
+        _tokenSupply -= count;
+
+        return {
+            value: 0,
+            flag: MsgFlag.REMAINING_GAS,
+            bounce: false
+        } (_tokenSupply, payload);
+    }
+}

@@ -1,0 +1,191 @@
+pragma ever-solidity >= 0.58.0;
+
+pragma AbiHeader expire;
+pragma AbiHeader time;
+pragma AbiHeader pubkey;
+
+import "./abstract/MultiTokenCollectionBase.tsol";
+
+import "./interfaces/callbacks/IMultiTokenBurnCallback.tsol";
+
+import "./libraries/MultiTokenErrors.tsol";
+
+contract MultiTokenCollection is MultiTokenCollectionBase {
+    address static _deployer;
+
+    constructor(
+        TvmCell codeNft,
+        TvmCell codeWallet,
+        TvmCell codeIndex,
+        TvmCell codeIndexBasis,
+        address ownerAddress,
+        string json,
+        address remainingGasTo
+    ) Collection (
+        codeNft,
+        codeIndex,
+        codeIndexBasis,
+        ownerAddress,
+        MultiTokenGas.TARGET_NFT_BALANCE,
+        json
+    ) public {
+        if (msg.pubkey() != 0) {
+            require(
+                msg.pubkey() == tvm.pubkey() && _deployer.value == 0,
+                MultiTokenErrors.NOT_DEPLOYER
+            );
+        } else {
+            require(
+                _deployer.value != 0 && msg.sender == _deployer,
+                MultiTokenErrors.NOT_DEPLOYER
+            );
+        }
+
+        _walletCode = codeWallet;
+
+        _supportedInterfaces[
+            bytes4(tvm.functionId(IMultiTokenCollection.multiTokenWalletCode)) ^
+            bytes4(tvm.functionId(IMultiTokenCollection.multiTokenCodeHash)) ^
+            bytes4(tvm.functionId(IMultiTokenCollection.multiTokenWalletAddress))
+        ] = true;
+
+        if (remainingGasTo.value != 0) {
+            remainingGasTo.transfer({
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
+                bounce: false
+            });
+        }
+    }
+
+    function mintToken(
+        address tokenOwner,
+        string json,
+        uint128 count,
+        address remainingGasTo,
+        bool notify,
+        TvmCell payload
+    )
+        public
+        virtual
+        onlyOwner
+        responsible
+        returns (uint256, address, address)
+    {
+        tvm.rawReserve(_reserve(), 0);
+
+        (uint256 id, address nftAddr) = _mintMultiTokenNft(
+            address(this),
+            count,
+            json,
+            MultiTokenGas.NFT_DEPLOY_VALUE,
+            MsgFlag.SENDER_PAYS_FEES
+        );
+
+        address wallet = _deployMultiTokenWallet(
+            tokenOwner,
+            id,
+            nftAddr,
+            count,
+            notify,
+            payload,
+            remainingGasTo
+        );
+
+        return {
+            value: 0,
+            flag: MsgFlag.ALL_NOT_RESERVED,
+            bounce: false
+        } (id, wallet, nftAddr);
+    }
+
+    function onMultiTokenAcceptBurn(
+        uint128 count,
+        uint256 tokenId,
+        address owner,
+        address remainingGasTo,
+        address callbackTo,
+        TvmCell payload
+    )
+        external
+        view
+        override
+        internalMsg
+        virtual
+        onlyMultiTokenWallet(tokenId, owner)
+    {
+        tvm.rawReserve(_reserve(), 0);
+
+        address nft = _resolveNft(tokenId);
+
+        TvmCell params = abi.encode(
+            MultiTokenBurnParams({
+                count: count,
+                nftId: tokenId,
+                walletOwner: owner,
+                remainingGasTo: remainingGasTo,
+                callback: CallbackData(true, callbackTo, payload)
+            })
+        );
+
+        IMultiTokenNft(nft)
+            .burnToken{
+                callback: MultiTokenCollection.onTokenSupplyUpdate,
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED
+            }(
+                count,
+                tokenId,
+                owner,
+                params
+            );
+    }
+
+    function onTokenSupplyUpdate(
+        uint128 tokenSupply,
+        TvmCell params
+    ) external virtual internalMsg {
+        MultiTokenBurnParams burnParams = abi.decode(params, MultiTokenBurnParams);
+        CallbackData callback = burnParams.callback;
+
+        require(
+            msg.sender == _resolveNft(burnParams.nftId),
+            MultiTokenErrors.SENDER_IS_NOT_MULTI_TOKEN_NFT
+        );
+
+        tvm.rawReserve(_reserve(), 0);
+
+        if (tokenSupply == 0) {
+            _totalSupply--;
+        }
+
+        emit MultiTokenBurned(
+            burnParams.nftId,
+            burnParams.count,
+            burnParams.walletOwner
+        );
+
+        if (callback.callbackTo.value == 0) {
+            burnParams.remainingGasTo.transfer({
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
+                bounce: false
+            });
+        } else {
+            IMultiTokenBurnCallback(callback.callbackTo)
+                .onMultiTokenBurn{
+                    value: 0,
+                    flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
+                    bounce: false
+                }(
+                    address(this),
+                    burnParams.nftId,
+                    burnParams.count,
+                    burnParams.walletOwner,
+                    msg.sender,
+                    burnParams.remainingGasTo,
+                    callback.payload
+                );
+        }
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "type": "Basic NFT",
+  "name": "Charging Bull",
+  "description": "Charging Bull from New York",
+  "preview": {
+    "source": "https://upload.wikimedia.org/wikipedia/en/c/c9/Charging_Bull_statue.jpg",
+    "mimetype": "image/jpeg"
+  },
+  "files": [
+    {
+      "source": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Bowling_Green_NYC_Feb_2020_13.jpg/1920px-Bowling_Green_NYC_Feb_2020_13.jpg",
+      "mimetype": "image/jpeg"
+    }
+  ],
+  "external_url": "https://en.wikipedia.org/wiki/Charging_Bull"
+}

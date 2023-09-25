@@ -1,0 +1,17 @@
+pragma ever-solidity >= 0.58.0;
+
+interface IMultiTokenMintCallback {
+    /// @notice Callback from MultiToken wallet contract on mint initial MultiToken
+    /// @param collection Address of collection smart contract that mint MultiToken
+    /// @param tokenId Unique MultiToken id
+    /// @param count minted MultiTokens count
+    /// @param remainingGasTo Address specified for receive remaining gas
+    /// @param payload Additional data attached to transfer by sender
+    function onMintMultiToken(
+        address collection,
+        uint256 tokenId,
+        uint128 count,
+        address remainingGasTo,
+        TvmCell payload
+    ) external;
+}

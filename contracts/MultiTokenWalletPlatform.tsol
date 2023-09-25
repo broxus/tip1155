@@ -1,0 +1,73 @@
+pragma ever-solidity >= 0.58.0;
+
+import "@broxus/ever-contracts/contracts/libraries/MsgFlag.tsol";
+
+import "./structures/IMultiTokenWalletPlatformData.tsol";
+
+contract MultiTokenWalletPlatform is IMultiTokenWalletPlatformData {
+    uint256 static _id;
+    address static _collection;
+    address static _owner;
+
+    constructor(
+        TvmCell _walletCode,
+        TvmCell _params,
+        address _sender,
+        address _remainingGasTo
+    )
+        public
+        functionID(0x60903B64)
+    {
+        if (
+            msg.sender == _collection ||
+            (_sender.value != 0 && _getExpectedAddress(_sender) == msg.sender)
+        ) {
+           initialize(_walletCode, _params, _remainingGasTo);
+        } else {
+            _remainingGasTo.transfer({
+                value: 0,
+                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.DESTROY_IF_ZERO,
+                bounce: false
+            });
+        }
+    }
+
+    function _getExpectedAddress(address _walletOwner) private view returns (address) {
+        TvmCell stateInit = tvm.buildStateInit({
+            contr: MultiTokenWalletPlatform,
+            varInit: {
+                _id: _id,
+                _collection: _collection,
+                _owner: _walletOwner
+            },
+            pubkey: 0,
+            code: tvm.code()
+        });
+
+        return address(tvm.hash(stateInit));
+    }
+
+    function initialize(
+        TvmCell _walletCode,
+        TvmCell _params,
+        address _remainingGasTo
+    ) private {
+        TvmCell data = abi.encode(
+            MultiTokenWalletPlatformData({
+                id: _id,
+                collection: _collection,
+                owner: _owner,
+                remainingGasTo: _remainingGasTo,
+                params: _params,
+                platformCode: tvm.code()
+            })
+		);
+
+        tvm.setcode(_walletCode);
+        tvm.setCurrentCode(_walletCode);
+
+        onCodeUpgrade(data);
+    }
+
+    function onCodeUpgrade(TvmCell _data) private {}
+}
