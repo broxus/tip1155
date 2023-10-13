@@ -1,4 +1,4 @@
-import { WalletTypes } from 'locklift';
+import { WalletTypes, toNano } from 'locklift';
 
 export default async (): Promise<void> => {
   await locklift.deployments.deployAccounts(
@@ -8,7 +8,7 @@ export default async (): Promise<void> => {
         signerId: '1',
         accountSettings: {
           type: WalletTypes.EverWallet,
-          value: locklift.utils.toNano(5),
+          value: toNano(5),
         },
       },
     ],

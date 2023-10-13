@@ -1,44 +1,41 @@
 {
-  "name": "carbon-contracts",
-  "version": "0.0.0",
-  "description": "",
-  "main": "",
+  "name": "@broxus/tip1155",
+  "version": "1.0.0",
+  "license": "ISC",
   "scripts": {
     "prepare": "husky install",
+
     "format": "prettier --write \"{scripts,test,deploy}/**/*.ts\"",
     "lint": "eslint \"{scripts,test,deploy}/**/*.ts\" --fix",
 
-    "build": "npx locklift build",
-    "deploy": "npx locklift deploy --disable-build -n",
-    "test": "npx locklift test --network local",
-    "test:nb": "npx locklift test --disable-build --network locklift"
+    "build": "locklift build",
+    "test": "locklift test --disable-build -n locklift",
+    "deploy": "locklift deploy --disable-build -n locklift",
+    "verify": "locklift verify"
   },
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@broxus/ever-contracts": "git://github.com/broxus/ever-contracts#1643b6b",
+    "@broxus/tip3": "git://github.com/FairyFromAlfeya/tip3#51e485b",
+    "@broxus/tip4": "git://github.com/FairyFromAlfeya/tip4#73e68fd",
     "@broxus/locklift-deploy": "1.1.1",
     "@broxus/locklift-verifier": "1.0.5",
-    "@broxus/tip4": "git://github.com/broxus/tip4#0e6c032",
-    "@types/chai": "4.3.5",
+    "@types/chai": "4.3.6",
     "@types/mocha": "10.0.1",
-    "@types/node": "20.4.9",
-    "@typescript-eslint/eslint-plugin": "5.27.0",
-    "@typescript-eslint/parser": "5.27.0",
-    "bignumber.js": "9.1.1",
-    "chai": "4.3.7",
-    "dotenv": "16.0.3",
-    "eslint": "8.17.0",
-    "eslint-config-prettier": "8.5.0",
-    "eslint-plugin-prettier": "4.0.0",
-    "husky": "8.0.1",
+    "@types/node": "20.7.0",
+    "@typescript-eslint/eslint-plugin": "6.7.3",
+    "@typescript-eslint/parser": "6.7.3",
+    "bignumber.js": "9.1.2",
+    "chai": "4.3.8",
+    "dotenv": "16.3.1",
+    "eslint": "8.50.0",
+    "eslint-config-prettier": "9.0.0",
+    "eslint-plugin-prettier": "5.0.0",
+    "husky": "8.0.3",
     "locklift": "2.8.3",
-    "prettier": "2.6.2",
-    "ts-mocha": "10.0.0",
-    "ts-node": "10.9.1",
-    "typescript": "5.1.6"
+    "prettier": "3.0.3",
+    "typescript": "5.2.2"
   },
-  "overrides": {
+  "resolutions": {
     "nekoton-wasm": "npm:nekoton-wasm-locklift@1.20.2"
   }
 }

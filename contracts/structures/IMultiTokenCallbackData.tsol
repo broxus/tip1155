@@ -1,9 +1,0 @@
-pragma ever-solidity >= 0.58.0;
-
-interface IMultiTokenCallbackData {
-    struct CallbackData {
-        bool notify;
-        address callbackTo;
-        TvmCell payload;
-    }
-}

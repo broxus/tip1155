@@ -1,11 +1,13 @@
 import { Address, Contract, toNano, zeroAddress } from 'locklift';
 import { expect } from 'chai';
+import BigNumber from 'bignumber.js';
 
-import nft from '../nft.json';
 import {
   MultiTokenCollectionAbi,
   MultiTokenWalletAbi,
 } from '../build/factorySource';
+import { Project } from '../assets/project';
+import { Contracts } from './helpers';
 
 const TOTAL = '100';
 
@@ -15,10 +17,15 @@ describe('Test multi token burning', () => {
   let wallet: Contract<MultiTokenWalletAbi>;
 
   const burn = async (count: number | string): Promise<void> => {
-    const { traceTree } = await locklift.tracing.trace(
+    const walletBalanceBefore = await wallet.methods
+      .balance({ answerId: 0 })
+      .call()
+      .then((r) => new BigNumber(r.value0));
+
+    await locklift.transactions.waitFinalized(
       wallet.methods
         .burn({
-          count,
+          amount: count,
           remainingGasTo: owner,
           callbackTo: zeroAddress,
           payload: '',
@@ -26,13 +33,14 @@ describe('Test multi token burning', () => {
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const event = traceTree.findEventsForContract({
-      contract: collection,
-      name: 'MultiTokenBurned' as const,
-    })[0];
+    const walletBalanceAfter = await wallet.methods
+      .balance({ answerId: 0 })
+      .call()
+      .then((r) => r.value0);
 
-    expect(event.count).to.be.equal(count.toString());
-    expect(event.owner.toString()).to.be.equal(owner.toString());
+    expect(
+      walletBalanceBefore.minus(walletBalanceAfter).toString(),
+    ).to.be.equal(count.toString());
   };
 
   before('deploy contracts', async () => {
@@ -44,25 +52,35 @@ describe('Test multi token burning', () => {
 
     const { traceTree } = await locklift.tracing.trace(
       collection.methods
-        .mintToken({
-          answerId: 0,
-          tokenOwner: owner,
-          json: JSON.stringify(nft),
-          count: TOTAL,
-          remainingGasTo: owner,
-          notify: false,
-          payload: '',
+        .mintNft({
+          _owner: owner,
+          _json: JSON.stringify(Project),
         })
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const id = traceTree.findEventsForContract({
-      contract: collection,
-      name: 'MultiTokenCreated' as const,
-    })[0].id;
+    const event = Contracts.getFirstEvent(
+      traceTree!,
+      collection,
+      'NftCreated' as const,
+    );
+
+    await locklift.transactions.waitFinalized(
+      collection.methods
+        .mint({
+          _nft: event.nft,
+          _amount: TOTAL,
+          _notify: false,
+          _payload: '',
+          _deployWalletValue: toNano(0.1),
+          _remainingGasTo: owner,
+          _recipient: owner,
+        })
+        .send({ from: owner, amount: toNano(3) }),
+    );
 
     wallet = await collection.methods
-      .multiTokenWalletAddress({ answerId: 0, id: id, owner: owner })
+      .multiTokenWalletAddress({ answerId: 0, _id: event.id, _owner: owner })
       .call()
       .then((r) =>
         locklift.factory.getDeployedContract('MultiTokenWallet', r.value0),
@@ -73,13 +91,13 @@ describe('Test multi token burning', () => {
     await locklift.tracing.trace(
       wallet.methods
         .burn({
-          count: +TOTAL + 1,
+          amount: +TOTAL + 1,
           remainingGasTo: owner,
           callbackTo: zeroAddress,
           payload: '',
         })
         .send({ from: owner, amount: toNano(2) }),
-      { allowedCodes: { compute: [2306] } },
+      { allowedCodes: { compute: [1060] } },
     );
 
     const balance = await wallet.methods
@@ -115,8 +133,8 @@ describe('Test multi token burning', () => {
         collection.methods.nftAddress({ answerId: 0, id: r.id }).call(),
       )
       .then((r) => locklift.factory.getDeployedContract('MultiTokenNft', r.nft))
-      .then((nft) => nft.methods.multiTokenSupply({ answerId: 0 }).call())
-      .then((r) => r.count);
+      .then((nft) => nft.methods.totalSupply({ answerId: 0 }).call())
+      .then((r) => r.value0);
 
     expect(totalSupply).to.be.equal('0');
     expect(+firstBalance).to.be.equal(+TOTAL - +BURN_FIRST);

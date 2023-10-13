@@ -24,7 +24,7 @@ describe('Test indexes', () => {
 
     const indexCodeHash = await index
       .getFullState()
-      .then((r) => r.state.codeHash);
+      .then((r) => r.state?.codeHash);
 
     const expectedCodeHash = await collection.methods
       .indexBasisCodeHash({ answerId: 0 })

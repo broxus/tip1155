@@ -1,8 +1,9 @@
 import { expect } from 'chai';
 import { Address, Contract, toNano } from 'locklift';
 
-import nft from '../nft.json';
 import { MultiTokenCollectionAbi } from '../build/factorySource';
+import { Project } from '../assets/project';
+import { Contracts } from './helpers';
 
 describe('Test minting', () => {
   let owner: Address;
@@ -21,29 +22,31 @@ describe('Test minting', () => {
       collection.methods
         .mintNft({
           _owner: owner,
-          _json: JSON.stringify(nft),
+          _json: JSON.stringify(Project),
         })
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const firstId = tt1.findEventsForContract({
-      contract: collection,
-      name: 'NftCreated' as const,
-    })[0].id;
+    const { id: firstId } = Contracts.getFirstEvent(
+      tt1!,
+      collection,
+      'NftCreated' as const,
+    );
 
     const { traceTree: tt2 } = await locklift.tracing.trace(
       collection.methods
         .mintNft({
           _owner: owner,
-          _json: JSON.stringify(nft),
+          _json: JSON.stringify(Project),
         })
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const secondId = tt2.findEventsForContract({
-      contract: collection,
-      name: 'NftCreated' as const,
-    })[0].id;
+    const { id: secondId } = Contracts.getFirstEvent(
+      tt2!,
+      collection,
+      'NftCreated' as const,
+    );
 
     const totalSupply = await collection.methods
       .totalSupply({ answerId: 0 })
@@ -57,22 +60,18 @@ describe('Test minting', () => {
   it('Deploy collection and mint token', async () => {
     const { traceTree: tt1 } = await locklift.tracing.trace(
       collection.methods
-        .mintToken({
-          answerId: 0,
-          tokenOwner: owner,
-          json: JSON.stringify(nft),
-          count: '100',
-          remainingGasTo: owner,
-          notify: false,
-          payload: '',
+        .mintNft({
+          _owner: owner,
+          _json: JSON.stringify(Project),
         })
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const firstId = tt1.findEventsForContract({
-      contract: collection,
-      name: 'MultiTokenCreated' as const,
-    })[0].id;
+    const { id: firstId } = Contracts.getFirstEvent(
+      tt1!,
+      collection,
+      'NftCreated' as const,
+    );
 
     const firstNft = await collection.methods
       .nftAddress({ answerId: 0, id: firstId })
@@ -81,29 +80,39 @@ describe('Test minting', () => {
         locklift.factory.getDeployedContract('MultiTokenNft', r.nft),
       );
 
+    await locklift.tracing.trace(
+      collection.methods
+        .mint({
+          _nft: firstNft.address,
+          _amount: '100',
+          _notify: false,
+          _payload: '',
+          _deployWalletValue: toNano(0.1),
+          _remainingGasTo: owner,
+          _recipient: owner,
+        })
+        .send({ from: owner, amount: toNano(3) }),
+    );
+
     const firstSupply = await firstNft.methods
-      .multiTokenSupply({ answerId: 0 })
+      .totalSupply({ answerId: 0 })
       .call()
-      .then((r) => r.count);
+      .then((r) => r.value0);
 
     const { traceTree: tt2 } = await locklift.tracing.trace(
       collection.methods
-        .mintToken({
-          answerId: 0,
-          tokenOwner: owner,
-          json: JSON.stringify(nft),
-          count: '200',
-          remainingGasTo: owner,
-          notify: false,
-          payload: '',
+        .mintNft({
+          _owner: owner,
+          _json: JSON.stringify(Project),
         })
-        .send({ from: owner, amount: toNano(2) }),
+        .send({ from: owner, amount: toNano(5) }),
     );
 
-    const secondId = tt2.findEventsForContract({
-      contract: collection,
-      name: 'MultiTokenCreated' as const,
-    })[0].id;
+    const { id: secondId } = Contracts.getFirstEvent(
+      tt2!,
+      collection,
+      'NftCreated' as const,
+    );
 
     const secondNft = await collection.methods
       .nftAddress({ answerId: 0, id: secondId })
@@ -112,10 +121,24 @@ describe('Test minting', () => {
         locklift.factory.getDeployedContract('MultiTokenNft', r.nft),
       );
 
+    await locklift.transactions.waitFinalized(
+      collection.methods
+        .mint({
+          _nft: secondNft.address,
+          _amount: '200',
+          _notify: false,
+          _payload: '',
+          _deployWalletValue: toNano(0.1),
+          _remainingGasTo: owner,
+          _recipient: owner,
+        })
+        .send({ from: owner, amount: toNano(3) }),
+    );
+
     const secondSupply = await secondNft.methods
-      .multiTokenSupply({ answerId: 0 })
+      .totalSupply({ answerId: 0 })
       .call()
-      .then((r) => r.count);
+      .then((r) => r.value0);
 
     const totalSupply = await collection.methods
       .totalSupply({ answerId: 0 })
@@ -125,6 +148,6 @@ describe('Test minting', () => {
     expect(totalSupply).to.be.equal('4');
     expect(firstSupply).to.be.equal('100');
     expect(secondSupply).to.be.equal('200');
-    expect(firstId).to.be.not.eq(secondId);
+    return expect(firstId).to.be.not.eq(secondId);
   });
 });

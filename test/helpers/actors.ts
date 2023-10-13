@@ -1,7 +1,8 @@
 import { WalletTypes, toNano } from 'locklift';
 import { Account, Signer } from 'everscale-standalone-client/nodejs';
-import { Contracts } from './contracts';
 import { expect } from 'chai';
+
+import { Contracts } from './contracts';
 
 export class Actors {
   static async deploy(
@@ -12,15 +13,22 @@ export class Actors {
     signer: Signer;
   }> {
     const signer = await locklift.keystore.getSigner(idx);
-    const account = (
-      await locklift.factory.accounts.addNewAccount({
+
+    if (!signer) {
+      throw 'Error: Signer is undefined';
+    }
+
+    const account = await locklift.factory.accounts
+      .addNewAccount({
         type: WalletTypes.EverWallet,
         value: toNano(initial_balance),
         publicKey: signer.publicKey,
       })
-    ).account;
+      .then((r) => r.account);
 
-    expect(await Contracts.getContractBalance(account.address)).to.be.above(0);
+    const balance = await Contracts.getContractBalance(account.address);
+
+    expect(balance).to.be.above(0);
 
     return { account, signer };
   }

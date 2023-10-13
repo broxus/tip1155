@@ -1,38 +1,16 @@
-pragma ever-solidity >= 0.58.0;
+pragma ever-solidity >= 0.62.0;
 
-import "@broxus/ever-contracts/contracts/libraries/MsgFlag.tsol";
 import "@broxus/tip4/contracts/Collection.tsol";
 
 import "../interfaces/IMultiTokenCollection.tsol";
-import "../interfaces/callbacks/IMultiTokenAcceptBurnCallback.tsol";
-
-import "../libraries/MultiTokenGas.tsol";
-
-import "../structures/IMultiTokenBurnParams.tsol";
-import "../structures/IMultiTokenWalletData.tsol";
 
 import "../MultiTokenNft.tsol";
-import "../MultiTokenWalletPlatform.tsol";
 
-abstract contract MultiTokenCollectionBase is
-    Collection,
-    IMultiTokenCollection,
-    IMultiTokenAcceptBurnCallback,
-    IMultiTokenBurnParams
-{
-    TvmCell static _platformCode;
+abstract contract MultiTokenCollectionBase is Collection, IMultiTokenCollection {
+    TvmCell internal _platformCode;
+    TvmCell internal _walletCode;
 
-    TvmCell _walletCode;
-
-    modifier onlyMultiTokenWallet(uint256 nftId, address owner) {
-        require(
-            msg.sender == _resolveMultiTokenWallet(nftId, owner),
-            MultiTokenErrors.SENDER_IS_NOT_MULTI_TOKEN_WALLET
-        );
-        _;
-    }
-
-    function multiTokenWalletCode(uint256 id, bool isEmpty)
+    function multiTokenWalletCode(uint256 _id, bool _isEmpty)
         external
         view
         override
@@ -43,14 +21,10 @@ abstract contract MultiTokenCollectionBase is
             value: 0,
             flag: MsgFlag.REMAINING_GAS,
             bounce: false
-        } _buildMultiTokenWalletCode(
-            address(this),
-            id,
-            isEmpty
-        );
+        } _buildMultiTokenWalletCode(_id, _isEmpty);
     }
 
-    function multiTokenCodeHash(uint256 id, bool isEmpty)
+    function multiTokenCodeHash(uint256 _id, bool _isEmpty)
         external
         view
         override
@@ -61,16 +35,10 @@ abstract contract MultiTokenCollectionBase is
             value: 0,
             flag: MsgFlag.REMAINING_GAS,
             bounce: false
-        } tvm.hash(
-            _buildMultiTokenWalletCode(
-                address(this),
-                id,
-                isEmpty
-            )
-        );
+        } tvm.hash(_buildMultiTokenWalletCode(_id, _isEmpty));
     }
 
-    function multiTokenWalletAddress(uint256 id, address owner)
+    function multiTokenWalletAddress(uint256 _id, address _owner)
         external
         view
         override
@@ -81,73 +49,70 @@ abstract contract MultiTokenCollectionBase is
             value: 0,
             flag: MsgFlag.REMAINING_GAS,
             bounce: false
-        } _resolveMultiTokenWallet(id, owner);
+        } _resolveMultiTokenWallet(_id, _owner);
     }
 
-    function _reserve() internal pure returns (uint128) {
-        return math.max(address(this).balance - msg.value, MultiTokenGas.TARGET_COLLECTION_BALANCE);
-    }
-
-    function _buildMultiTokenWalletCode(
-        address collection,
-        uint256 nftId,
-        bool isEmpty
-    )
+    function _buildMultiTokenWalletCode(uint256 _nftId, bool _isEmpty)
         internal
         view
-        virtual
         returns (TvmCell)
     {
         TvmBuilder salt;
 
-        salt.store(collection);
-        salt.store(nftId);
-        salt.store(isEmpty);
+        salt.store(address(this));
+        salt.store(_nftId);
+        salt.store(_isEmpty);
 
         return tvm.setCodeSalt(_walletCode, salt.toCell());
     }
 
-    function _buildMultiTokenWalletState(
-        uint256 nftId,
-        address owner
-    )
+    function _buildMultiTokenPlatformCode(uint256 _nftId)
         internal
         view
-        virtual
+        returns (TvmCell)
+    {
+        TvmBuilder salt;
+
+        salt.store(address(this));
+        salt.store(_nftId);
+
+        return tvm.setCodeSalt(_platformCode, salt.toCell());
+    }
+
+    function _buildMultiTokenWalletState(uint256 _nftId, address _owner)
+        internal
+        view
         returns (TvmCell)
     {
         return tvm.buildStateInit({
             contr: MultiTokenWalletPlatform,
             varInit: {
-                _id: nftId,
-                _collection: address(this),
-                _owner: owner
+                nft: _resolveNft(_nftId),
+                owner: _owner
             },
             pubkey: 0,
-            code: _platformCode
+            code: _buildMultiTokenPlatformCode(_nftId)
         });
     }
 
-    function _resolveMultiTokenWallet(uint256 nftId, address owner)
+    function _resolveMultiTokenWallet(uint256 _nftId, address _owner)
         internal
         view
-        virtual
         returns (address)
     {
         return address(
             tvm.hash(
-                _buildMultiTokenWalletState(nftId, owner)
+                _buildMultiTokenWalletState(_nftId, _owner)
             )
         );
     }
 
-    function _mintMultiTokenNft(
-        address owner,
-        uint128 supply,
-        string json,
-        uint128 value,
-        uint16 flag
-    ) internal virtual returns (uint256, address) {
+    function _mintNft(
+        address _nftOwner,
+        string _nftJson,
+        uint128 _value,
+        uint16 _flag
+    ) internal override {
         uint256 id = _totalMinted;
 
         _totalMinted++;
@@ -156,90 +121,29 @@ abstract contract MultiTokenCollectionBase is
         TvmCell codeNft = _buildNftCode(address(this));
         TvmCell stateNft = _buildNftState(codeNft, id);
 
-        address nftAddr = new MultiTokenNft{
+        address nft = new MultiTokenNft{
             stateInit: stateNft,
-            value: value,
-            flag: flag
+            value: _value,
+            flag: _flag
         }(
-            owner,
+            _nftOwner,
             msg.sender,
             _remainOnNft,
-            json,
+            _nftJson,
             _codeIndex,
-            supply
+            _walletCode,
+            _buildMultiTokenPlatformCode(id),
+            0,
+            "TIP-1155",
+            "TIP-1155"
         );
 
         emit NftCreated({
             id: id,
-            nft: nftAddr,
-            owner: owner,
-            manager: owner,
+            nft: nft,
+            owner: _nftOwner,
+            manager: address(this),
             creator: msg.sender
         });
-
-        return (id, nftAddr);
-    }
-
-    function _mintNft(
-        address owner,
-        string json,
-        uint128 value,
-        uint16 flag
-    ) internal virtual override {
-        _mintMultiTokenNft(
-            owner,
-            0,
-            json,
-            value,
-            flag
-        );
-    }
-
-    function _deployMultiTokenWallet(
-        address owner,
-        uint256 nftId,
-        address nftAddr,
-        uint128 balance,
-        bool notify,
-        TvmCell payload,
-        address remainingGasTo
-    )
-        internal
-        view
-        virtual
-        returns (address)
-    {
-        TvmCell walletCode = _buildMultiTokenWalletCode(address(this), nftId, false);
-        TvmCell walletState = _buildMultiTokenWalletState(nftId, owner);
-
-        TvmCell params = abi.encode(
-            IMultiTokenWalletData.MultiTokenWalletData({
-                nft: nftAddr,
-                balance: balance,
-                codeIndex: _codeIndex,
-                callback: CallbackData(notify, owner, payload)
-            })
-        );
-
-        address wallet = new MultiTokenWalletPlatform{
-            stateInit: walletState,
-            value: MultiTokenGas.WALLET_DEPLOY_VALUE,
-            flag: MsgFlag.SENDER_PAYS_FEES
-        }(
-            walletCode,
-            params,
-            owner,
-            remainingGasTo
-        );
-
-        emit MultiTokenCreated({
-            id: nftId,
-            token: wallet,
-            balance: balance,
-            owner: owner,
-            creator: msg.sender
-        });
-
-        return wallet;
     }
 }

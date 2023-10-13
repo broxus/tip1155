@@ -1,6 +1,7 @@
 import { Address, Contract } from 'locklift';
-import { FactorySource } from 'build/factorySource';
 import { expect } from 'chai';
+
+import { FactorySource } from '../../build/factorySource';
 
 export declare type MultiTokenWalletContract = Contract<
   FactorySource['MultiTokenWallet']
@@ -12,25 +13,17 @@ export class MultiTokens {
   }
 
   static async getInfo(contract: MultiTokenWalletContract): Promise<{
-    collection?: Address;
-    id?: string;
-    owner?: Address;
+    collection: Address;
+    id: string;
   }> {
     return contract.methods.getInfo({ answerId: 0 }).call();
   }
 
   static async getBalance(contract: MultiTokenWalletContract): Promise<number> {
-    return Number(
-      (await contract.methods.balance({ answerId: 0 }).call()).value0,
-    );
-  }
-
-  static async getIndex(contract: MultiTokenWalletContract): Promise<Address> {
-    const { collection, owner } = await MultiTokens.getInfo(contract);
-    const { index } = await contract.methods
-      .resolveIndex({ answerId: 0, collection, owner })
-      .call();
-    return index;
+    return contract.methods
+      .balance({ answerId: 0 })
+      .call()
+      .then((r) => +r.value0);
   }
 
   static async checkInfo(
@@ -38,24 +31,19 @@ export class MultiTokens {
     expected: {
       collection?: Address;
       id?: string;
-      owner?: Address;
     },
   ) {
     const actual = await MultiTokens.getInfo(contract);
-    if (expected.collection !== undefined) {
+
+    if (expected.collection) {
       expect(actual.collection.toString()).to.be.eq(
         expected.collection.toString(),
         'Wrong token collection',
       );
     }
-    if (expected.id !== undefined) {
+
+    if (expected.id) {
       expect(actual.id).to.be.eq(expected.id, 'Wrong token id');
-    }
-    if (expected.owner !== undefined) {
-      expect(actual.owner.toString()).to.be.eq(
-        expected.owner.toString(),
-        'Wrong token owner',
-      );
     }
   }
 

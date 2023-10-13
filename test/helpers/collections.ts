@@ -1,42 +1,18 @@
-import {
-  Address,
-  Contract,
-  getRandomNonce,
-  toNano,
-  zeroAddress,
-} from 'locklift';
+import { Address, Contract, getRandomNonce, toNano } from 'locklift';
 import { Account } from 'everscale-standalone-client/nodejs';
+import { expect } from 'chai';
+
+import { FactorySource } from '../../build/factorySource';
 import { Contracts } from './contracts';
 import { MultiTokenWalletContract, MultiTokens } from './multiTokens';
 import { NftContract, Nfts } from './nfts';
-import { FactorySource } from 'build/factorySource';
-import { expect } from 'chai';
+
+import { Collection } from '../../assets/collection';
+import { Project } from '../../assets/project';
 
 export declare type MultiTokenCollectionContract = Contract<
   FactorySource['MultiTokenCollection']
 >;
-
-const COLLECTION_METADATA = JSON.stringify({
-  title: 'Test Collection',
-});
-const TOKEN_METADATA = JSON.stringify({
-  type: 'Basic NFT',
-  name: 'Charging Bull',
-  description: 'Charging Bull from New York',
-  preview: {
-    source:
-      'https://upload.wikimedia.org/wikipedia/en/c/c9/Charging_Bull_statue.jpg',
-    mimetype: 'image/jpeg',
-  },
-  files: [
-    {
-      source:
-        'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Bowling_Green_NYC_Feb_2020_13.jpg/1920px-Bowling_Green_NYC_Feb_2020_13.jpg',
-      mimetype: 'image/jpeg',
-    },
-  ],
-  external_url: 'https://en.wikipedia.org/wiki/Charging_Bull',
-});
 
 export class Collections {
   static async deploy(
@@ -55,24 +31,21 @@ export class Collections {
     const { contract: collection } = await locklift.factory.deployContract({
       contract: 'MultiTokenCollection',
       constructorParams: {
-        codeNft: Nft.code,
-        codeWallet: MultiTokenWallet.code,
-        codeIndex: Index.code,
-        codeIndexBasis: IndexBasis.code,
-        ownerAddress,
-        json: COLLECTION_METADATA,
-        remainingGasTo: ownerAddress,
+        _initialPlatformCode: MultiTokenWalletPlatform.code,
+        _initialNftCode: Nft.code,
+        _initialWalletCode: MultiTokenWallet.code,
+        _initialIndexCode: Index.code,
+        _initialIndexBasisCode: IndexBasis.code,
+        _initialOwner: ownerAddress,
+        _initialJson: JSON.stringify(Collection),
+        _remainingGasTo: ownerAddress,
       },
-      initParams: {
-        _deployer: zeroAddress,
-        nonce_: getRandomNonce(),
-        _platformCode: MultiTokenWalletPlatform.code,
-      },
+      initParams: { nonce_: getRandomNonce() },
       publicKey: publicKey,
       value: toNano(4),
     });
 
-    await Collections.checkJson(collection, COLLECTION_METADATA);
+    await Collections.checkJson(collection, JSON.stringify(Collection));
     await Collections.checkTotalSupply(collection, 0);
     await Collections.checkOwner(collection, ownerAddress);
     await Contracts.checkContractBalance(collection.address, 1_000_000_000);
@@ -90,15 +63,19 @@ export class Collections {
   static async getJson(
     contract: MultiTokenCollectionContract,
   ): Promise<string> {
-    return (await contract.methods.getJson({ answerId: 0 }).call()).json;
+    return contract.methods
+      .getJson({ answerId: 0 })
+      .call()
+      .then((r) => r.json);
   }
 
   static async getTotalSupply(
     contract: MultiTokenCollectionContract,
   ): Promise<number> {
-    return Number(
-      (await contract.methods.totalSupply({ answerId: 0 }).call()).count,
-    );
+    return contract.methods
+      .totalSupply({ answerId: 0 })
+      .call()
+      .then((r) => +r.count);
   }
 
   static async getTotalMultiTokenSupply(
@@ -108,15 +85,19 @@ export class Collections {
     const nftAddr = await Collections.nftAddress(contract, id);
     const nft = Nfts.attachDeployed(nftAddr);
 
-    return Number(
-      (await nft.methods.multiTokenSupply({ answerId: 0 }).call()).count,
-    );
+    return nft.methods
+      .totalSupply({ answerId: 0 })
+      .call()
+      .then((r) => +r.value0);
   }
 
   static async getOwner(
     contract: MultiTokenCollectionContract,
   ): Promise<Address> {
-    return (await contract.methods.owner().call()).value0;
+    return contract.methods
+      .owner()
+      .call()
+      .then((r) => r.value0);
   }
 
   static async checkJson(
@@ -162,14 +143,13 @@ export class Collections {
     contract: MultiTokenCollectionContract,
     id: string,
   ): Promise<Address> {
-    return (
-      await contract.methods
-        .nftAddress({
-          answerId: 0,
-          id,
-        })
-        .call()
-    ).nft;
+    return contract.methods
+      .nftAddress({
+        answerId: 0,
+        id,
+      })
+      .call()
+      .then((r) => r.nft);
   }
 
   static async multiTokenWalletAddress(
@@ -177,15 +157,14 @@ export class Collections {
     id: string,
     owner: Address,
   ): Promise<Address> {
-    return (
-      await contract.methods
-        .multiTokenWalletAddress({
-          answerId: 0,
-          id,
-          owner,
-        })
-        .call()
-    ).value0;
+    return contract.methods
+      .multiTokenWalletAddress({
+        answerId: 0,
+        _id: id,
+        _owner: owner,
+      })
+      .call()
+      .then((r) => r.value0);
   }
 
   static async mintNFT(
@@ -199,7 +178,7 @@ export class Collections {
       collection.methods
         .mintNft({
           _owner: owner.address,
-          _json: TOKEN_METADATA,
+          _json: JSON.stringify(Project),
         })
         .send({
           from: owner.address,
@@ -207,18 +186,22 @@ export class Collections {
         }),
     );
 
-    const { id } = Contracts.getFirstEvent(traceTree, collection, 'NftCreated');
-    const nftAddress = await Collections.nftAddress(collection, id);
+    const { id } = Contracts.getFirstEvent(
+      traceTree!,
+      collection,
+      'NftCreated' as const,
+    );
 
+    const nftAddress = await Collections.nftAddress(collection, id);
     const nft = Nfts.attachDeployed(nftAddress);
 
     await Nfts.checkInfo(nft, {
       collection: collection.address,
       id,
       owner: owner.address,
-      manager: owner.address,
+      manager: collection.address,
     });
-    await Nfts.checkJson(nft, TOKEN_METADATA);
+    await Nfts.checkJson(nft, JSON.stringify(Project));
 
     return { nft, id };
   }
@@ -234,14 +217,9 @@ export class Collections {
   }> {
     const { traceTree } = await locklift.tracing.trace(
       collection.methods
-        .mintToken({
-          answerId: 0,
-          tokenOwner: owner.address,
-          json: TOKEN_METADATA,
-          count,
-          remainingGasTo: owner.address,
-          notify: false,
-          payload: '',
+        .mintNft({
+          _owner: owner.address,
+          _json: JSON.stringify(Project),
         })
         .send({
           from: owner.address,
@@ -249,36 +227,50 @@ export class Collections {
         }),
     );
 
-    const { id } = Contracts.getFirstEvent(
-      traceTree,
+    const event = Contracts.getFirstEvent(
+      traceTree!,
       collection,
-      'MultiTokenCreated',
+      'NftCreated' as const,
     );
+
+    await locklift.transactions.waitFinalized(
+      collection.methods
+        .mint({
+          _nft: event.nft,
+          _amount: count,
+          _remainingGasTo: owner.address,
+          _notify: false,
+          _payload: '',
+          _recipient: owner.address,
+          _deployWalletValue: toNano(0.1),
+        })
+        .send({ from: owner.address, amount: toNano(3) }),
+    );
+
     const walletAddress = await Collections.multiTokenWalletAddress(
       collection,
-      id,
+      event.id,
       owner.address,
     );
 
     const wallet = MultiTokens.attachDeployed(walletAddress);
     await MultiTokens.checkInfo(wallet, {
       collection: collection.address,
-      id,
-      owner: owner.address,
+      id: event.id,
     });
     await MultiTokens.checkBalance(wallet, count);
 
-    const nftAddress = await Collections.nftAddress(collection, id);
+    const nftAddress = await Collections.nftAddress(collection, event.id);
     const nft = Nfts.attachDeployed(nftAddress);
 
     await Nfts.checkInfo(nft, {
       collection: collection.address,
-      id,
-      owner: collection.address,
+      id: event.id,
+      owner: owner.address,
       manager: collection.address,
     });
-    await Nfts.checkJson(nft, TOKEN_METADATA);
+    await Nfts.checkJson(nft, JSON.stringify(Project));
 
-    return { wallet, nft, id };
+    return { wallet, nft, id: event.id };
   }
 }

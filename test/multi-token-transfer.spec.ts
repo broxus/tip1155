@@ -1,8 +1,9 @@
 import { toNano } from 'locklift';
+
 import { Actors, Collections, Contracts, MultiTokens } from './helpers';
 
-describe('Test multi token transferring', async function () {
-  it('transfer twice', async function () {
+describe('Test multi token transferring', () => {
+  it('transfer twice', async () => {
     const TOTAL = 100;
     const TRANSFER_FIRST = 70;
     const TRANSFER_SECOND = 29;
@@ -20,19 +21,21 @@ describe('Test multi token transferring', async function () {
       TOTAL,
     );
 
-    await wallet.methods
-      .transfer({
-        count: TRANSFER_FIRST,
-        recipient: receiver.address,
-        deployTokenWalletValue: toNano(1),
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
+    await locklift.transactions.waitFinalized(
+      wallet.methods
+        .transfer({
+          amount: TRANSFER_FIRST,
+          recipient: receiver.address,
+          deployWalletValue: toNano(0.1),
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(0.5),
+        }),
+    );
 
     const receiverWalletAddress = await Collections.multiTokenWalletAddress(
       collection,
@@ -46,22 +49,23 @@ describe('Test multi token transferring', async function () {
     await MultiTokens.checkInfo(receiverWallet, {
       collection: collection.address,
       id,
-      owner: receiver.address,
     });
 
-    await wallet.methods
-      .transfer({
-        count: TRANSFER_SECOND,
-        recipient: receiver.address,
-        deployTokenWalletValue: 0,
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
+    await locklift.transactions.waitFinalized(
+      wallet.methods
+        .transfer({
+          amount: TRANSFER_SECOND,
+          recipient: receiver.address,
+          deployWalletValue: 0,
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
 
     await MultiTokens.checkBalance(
       wallet,
@@ -73,7 +77,7 @@ describe('Test multi token transferring', async function () {
     );
   });
 
-  it('transfer + transferToWallet', async function () {
+  it('transfer + transferToWallet', async () => {
     const TOTAL = 100;
     const TRANSFER_FIRST = 70;
     const TRANSFER_SECOND = 29;
@@ -91,19 +95,21 @@ describe('Test multi token transferring', async function () {
       TOTAL,
     );
 
-    await wallet.methods
-      .transfer({
-        count: TRANSFER_FIRST,
-        recipient: receiver.address,
-        deployTokenWalletValue: toNano(1),
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
+    await locklift.transactions.waitFinalized(
+      wallet.methods
+        .transfer({
+          amount: TRANSFER_FIRST,
+          recipient: receiver.address,
+          deployWalletValue: toNano(0.1),
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
 
     const receiverWalletAddress = await Collections.multiTokenWalletAddress(
       collection,
@@ -115,18 +121,20 @@ describe('Test multi token transferring', async function () {
     await MultiTokens.checkBalance(wallet, TOTAL - TRANSFER_FIRST);
     await MultiTokens.checkBalance(receiverWallet, TRANSFER_FIRST);
 
-    await wallet.methods
-      .transferToWallet({
-        count: TRANSFER_SECOND,
-        recipientToken: receiverWallet.address,
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
+    await locklift.transactions.waitFinalized(
+      wallet.methods
+        .transferToWallet({
+          amount: TRANSFER_SECOND,
+          recipientTokenWallet: receiverWallet.address,
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
 
     await MultiTokens.checkBalance(
       wallet,
@@ -138,7 +146,7 @@ describe('Test multi token transferring', async function () {
     );
   });
 
-  it('transferToWallet to not a wallet', async function () {
+  it('transferToWallet to not a wallet', async () => {
     const TOTAL = 100;
     const TRANSFER = 70;
 
@@ -151,23 +159,25 @@ describe('Test multi token transferring', async function () {
     );
     const { wallet } = await Collections.mintToken(collection, owner, TOTAL);
 
-    await wallet.methods
-      .transferToWallet({
-        count: TRANSFER,
-        recipientToken: receiver.address,
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
+    await locklift.transactions.waitFinalized(
+      wallet.methods
+        .transferToWallet({
+          amount: TRANSFER,
+          recipientTokenWallet: receiver.address,
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
 
     await MultiTokens.checkBalance(wallet, TOTAL);
   });
 
-  it('transferToWallet to absent wallet', async function () {
+  it('transferToWallet to absent wallet', async () => {
     const TOTAL = 100;
     const TRANSFER = 70;
 
@@ -189,18 +199,21 @@ describe('Test multi token transferring', async function () {
       id,
       receiver.address,
     );
-    await wallet.methods
-      .transferToWallet({
-        count: TRANSFER,
-        recipientToken: receiverWalletAddress,
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
+
+    await locklift.transactions.waitFinalized(
+      wallet.methods
+        .transferToWallet({
+          amount: TRANSFER,
+          recipientTokenWallet: receiverWalletAddress,
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
 
     await MultiTokens.checkBalance(wallet, TOTAL);
     await Contracts.checkExists(receiverWalletAddress, false);

@@ -1,63 +1,43 @@
-pragma ever-solidity >= 0.58.0;
+pragma ever-solidity >= 0.62.0;
 
 import "@broxus/ever-contracts/contracts/libraries/MsgFlag.tsol";
-import "@broxus/tip4/contracts/TIP4_3/Index.tsol";
-import "@broxus/tip4/contracts/TIP4_3/interfaces/ITIP4_3NFT.tsol";
-import "@broxus/tip4/contracts/TIP6/TIP6.tsol";
+import "@broxus/tip3/contracts/abstract/TokenWalletBurnableBase.tsol";
+import "@broxus/tip3/contracts/abstract/TokenWalletBurnableByRootBase.tsol";
+import "@broxus/tip3/contracts/abstract/TokenWalletDestroyableBase.tsol";
+import "@broxus/tip3/contracts/additional/SID.tsol";
 
 import "../interfaces/IMultiTokenWallet.tsol";
-import "../interfaces/IDestroyable.tsol";
-import "../interfaces/callbacks/IMultiTokenBounceTransferCallback.tsol";
-import "../interfaces/callbacks/IMultiTokenBounceBurnCallback.tsol";
-import "../interfaces/callbacks/IMultiTokenMintCallback.tsol";
-import "../interfaces/callbacks/IMultiTokenAcceptBurnCallback.tsol";
-
 import "../libraries/MultiTokenGas.tsol";
-import "../libraries/MultiTokenErrors.tsol";
-
-import "../structures/IMultiTokenWalletData.tsol";
 import "../structures/IMultiTokenWalletPlatformData.tsol";
 
 import "../MultiTokenWalletPlatform.tsol";
 
 abstract contract MultiTokenWalletBase is
-    TIP6,
+    TokenWalletBurnableBase,
+    TokenWalletBurnableByRootBase,
+    TokenWalletDestroyableBase,
+    SID,
     IMultiTokenWallet,
-    ITIP4_3NFT,
-    IDestroyable,
-    IMultiTokenWalletData,
     IMultiTokenWalletPlatformData
 {
-    uint256 _id;
-    address _nft;
-    address _collection;
+    uint256 internal _id;
+    address internal _collection;
 
-    TvmCell _codeIndex;
-    TvmCell _platformCode;
+    TvmCell internal _platformCode;
+    mapping(bytes4 => bool) internal _supportedInterfaces;
 
-    address _owner;
-    uint128 _balance;
-
-    modifier onlyOwner {
-        require(
-            msg.sender == _owner && msg.sender.value != 0,
-            MultiTokenErrors.SEND_NOT_TOKEN_OWNER
-        );
-        _;
-    }
-
-    function balance()
+    function supportsInterface(bytes4 _interfaceID)
         external
         view
         override
         responsible
-        returns (uint128)
+        returns (bool)
     {
         return {
             value: 0,
             flag: MsgFlag.REMAINING_GAS,
             bounce: false
-        } _balance;
+        } _supportedInterfaces[_interfaceID];
     }
 
     function getInfo()
@@ -65,330 +45,179 @@ abstract contract MultiTokenWalletBase is
         view
         override
         responsible
-        returns (uint256 id, address owner, address collection)
+        returns (uint256 id, address collection)
     {
         return {
             value: 0,
             flag: MsgFlag.REMAINING_GAS,
             bounce: false
-        } (_id, _owner, _collection);
+        } (_id, _collection);
     }
 
-    function indexCode()
-        external
-        view
-        override
-        responsible
-        returns (TvmCell code)
-    {
-        return {
-            value: 0,
-            flag: MsgFlag.REMAINING_GAS,
-            bounce: false
-        } _codeIndex;
+    function _targetBalance() internal pure override returns (uint128) {
+        return MultiTokenGas.TARGET_WALLET_BALANCE;
     }
 
-    function indexCodeHash()
-        external
-        view
-        override
-        responsible
-        returns (uint256 hash)
-    {
-        return {
-            value: 0,
-            flag: MsgFlag.REMAINING_GAS,
-            bounce: false
-        } tvm.hash(_codeIndex);
-    }
+    function _initWalletBase(MultiTokenWalletPlatformData _platformData) internal {
+        // Get collection and NFT id from salt
+        (_collection, _id) = tvm.codeSalt(tvm.code())
+            .get()
+            .toSlice()
+            .decode(address, uint256);
 
-    function resolveIndex(
-        address collection,
-        address owner
-    )
-        public
-        view
-        override
-        responsible
-        returns (address index)
-    {
-        TvmCell code = _buildIndexCode(collection, owner);
-        TvmCell state = _buildIndexState(code, address(this));
-        uint256 hashState = tvm.hash(state);
-
-        return {
-            value: 0,
-            flag: MsgFlag.REMAINING_GAS,
-            bounce: false
-        } address.makeAddrStd(address(this).wid, hashState);
-    }
-
-    onBounce(TvmSlice body) external virtual {
-        tvm.rawReserve(0, 4);
-
-        uint32 functionId = body.decode(uint32);
-
-        if (functionId == tvm.functionId(IMultiTokenWallet.acceptTransfer)) {
-            uint128 count = body.decode(uint128);
-
-            _balance += count;
-
-            _afterTokenTransferBounce(count, msg.sender);
-
-            IMultiTokenBounceTransferCallback(_owner)
-                .onMultiTokenBounceTransfer{
-                    value: 0,
-                    flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
-                    bounce: false
-                }(
-                    _collection,
-                    _id,
-                    count,
-                    msg.sender
-                );
-        } else if (functionId == tvm.functionId(IMultiTokenAcceptBurnCallback.onMultiTokenAcceptBurn)) {
-            uint128 count = body.decode(uint128);
-
-            _balance += count;
-
-            _afterTokenTransferBounce(count, msg.sender);
-
-            IMultiTokenBounceBurnCallback(_owner)
-                .onMultiTokenBounceBurn{
-                    value: 0,
-                    flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
-                    bounce: false
-                }(
-                    _collection,
-                    _id,
-                    count
-                );
-        }
-    }
-
-    function _initWalletBase(
-        MultiTokenWalletPlatformData _platformData,
-        MultiTokenWalletData _walletData
-    ) internal {
-        address remainingGasTo = _platformData.remainingGasTo;
-        uint128 initialBalance = _walletData.balance;
-
-        require(
-            initialBalance == 0 || msg.sender == _platformData.collection,
-            MultiTokenErrors.SENDER_NOT_COLLECTION
-        );
-        require(
-            msg.value > MultiTokenGas.TARGET_WALLET_BALANCE,
-            MultiTokenErrors.VALUE_TOO_LOW
-        );
-
-        tvm.rawReserve(MultiTokenGas.TARGET_WALLET_BALANCE, 0);
-
-        _id = _platformData.id;
-        _collection = _platformData.collection;
-        _nft = _walletData.nft;
         _platformCode = _platformData.platformCode;
 
-        _owner = _platformData.owner;
-        _balance = initialBalance;
+        // TIP-3
+        root_ = _platformData.root;
+        owner_ = _platformData.owner;
+        balance_ = 0;
 
-        _supportedInterfaces[bytes4(tvm.functionId(ITIP6.supportsInterface))] = true;
-        _supportedInterfaces[
-            bytes4(tvm.functionId(IMultiTokenWallet.getInfo)) ^
-            bytes4(tvm.functionId(IMultiTokenWallet.balance)) ^
-            bytes4(tvm.functionId(IMultiTokenWallet.transfer)) ^
-            bytes4(tvm.functionId(IMultiTokenWallet.transferToWallet)) ^
-            bytes4(tvm.functionId(IMultiTokenWallet.acceptTransfer)) ^
-            bytes4(tvm.functionId(IMultiTokenWallet.burn))
-        ] = true;
-
-        emit MultiTokenWalletCreated({
-            id: _id,
-            owner: _owner,
-            collection: _platformData.collection,
-            balance: initialBalance
-        });
-
-        if (_walletData.callback.notify && initialBalance > 0) {
-            IMultiTokenMintCallback(_owner)
-                .onMintMultiToken{
-                    value: 0,
-                    flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
-                    bounce: false
-                }(
-                    _collection,
-                    _id,
-                    initialBalance,
-                    remainingGasTo,
-                    _walletData.callback.payload
-                );
-        } else if (remainingGasTo.value != 0 && remainingGasTo != address(this)) {
-            remainingGasTo.transfer({
-                value: 0,
-                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.IGNORE_ERRORS,
-                bounce: false
-            });
-        }
+        // TIP-6
+        _supportedInterfaces[bytes4(tvm.functionId(SID.supportsInterface))] = true;
+        _supportedInterfaces[bytes4(tvm.functionId(IMultiTokenWallet.getInfo))] = true;
+        _supportedInterfaces[bytes4(0x4f479fa3)] = true;    // TIP-3.1
+        _supportedInterfaces[bytes4(0x2a4ac43e)] = true;    // TIP-3.2
+        _supportedInterfaces[bytes4(0x562548ad)] = true;    // IBurnableTokenWallet
+        _supportedInterfaces[bytes4(0x0c2ff20d)] = true;    // IBurnableByRootTokenWallet
+        _supportedInterfaces[bytes4(0x0f0258aa)] = true;    // IDestroyable
     }
 
-    function _initIndexes(MultiTokenWalletData _data) internal {
-        _codeIndex = _data.codeIndex;
-
-        _supportedInterfaces[
-            bytes4(tvm.functionId(ITIP4_3NFT.indexCode)) ^
-            bytes4(tvm.functionId(ITIP4_3NFT.indexCodeHash)) ^
-            bytes4(tvm.functionId(ITIP4_3NFT.resolveIndex))
-        ] = true;
-
-        if (_data.balance > 0) {
-            _deployIndex();
-        }
-    }
-
-    function _buildWalletState(address owner) internal view returns (TvmCell) {
+    function _buildWalletInitData(address _walletOwner)
+        internal
+        view
+        override
+        returns (TvmCell)
+    {
         return tvm.buildStateInit({
             contr: MultiTokenWalletPlatform,
             varInit: {
-                _id: _id,
-                _collection: _collection,
-                _owner: owner
+                nft: root_,
+                owner: _walletOwner
             },
             pubkey: 0,
             code: _platformCode
         });
     }
 
-    function _buildIndexState(
-        TvmCell code,
-        address nft
-    )
-        internal
-        pure
-        virtual
-        returns (TvmCell)
-    {
-        return tvm.buildStateInit({
-            contr: Index,
-            varInit: { _nft: nft },
-            code: code
-        });
-    }
+    function _transfer(
+        uint128 _amount,
+        address /*_recipientWallet*/,
+        address /*_remainingGasTo*/,
+        bool /*_notify*/,
+        TvmCell /*_payload*/
+    ) internal override {
+        balance_ -= _amount;
 
-    function _buildIndexCode(
-        address collection,
-        address owner
-    )
-        internal
-        view
-        virtual
-        returns (TvmCell)
-    {
-        TvmBuilder salt;
-
-        salt.store("fungible");
-        salt.store(collection);
-        salt.store(owner);
-
-        return tvm.setCodeSalt(_codeIndex, salt.toCell());
-    }
-
-    function _deployIndex() internal view virtual {
-        TvmCell codeIndexOwner = _buildIndexCode(address(0), _owner);
-        TvmCell stateIndexOwner = _buildIndexState(codeIndexOwner, address(this));
-        new Index{ stateInit: stateIndexOwner, value: MultiTokenGas.INDEX_DEPLOY_VALUE }(_collection);
-
-        TvmCell codeIndexOwnerRoot = _buildIndexCode(_collection, _owner);
-        TvmCell stateIndexOwnerRoot = _buildIndexState(codeIndexOwnerRoot, address(this));
-        new Index{ stateInit: stateIndexOwnerRoot, value: MultiTokenGas.INDEX_DEPLOY_VALUE }(_collection);
-    }
-
-    function _destructIndex(address sendGasTo) internal view virtual {
-        address oldIndexOwner = resolveIndex(address(0), _owner);
-        IIndex(oldIndexOwner).destruct{ value: MultiTokenGas.INDEX_DESTROY_VALUE }(sendGasTo);
-
-        address oldIndexOwnerRoot = resolveIndex(_collection, _owner);
-        IIndex(oldIndexOwnerRoot).destruct{ value: MultiTokenGas.INDEX_DESTROY_VALUE }(sendGasTo);
-    }
-
-    function _initWalletDestroyable() internal {
-        _supportedInterfaces[bytes4(tvm.functionId(IDestroyable.destroy))] = true;
-    }
-
-    function _afterTokenTransfer(
-        uint128 count,
-        address recipient,
-        address remainingGasTo
-    ) internal view virtual {
-        if (_balance == 0) {
-            _destructIndex(remainingGasTo);
-            _updateSalt(true);
-        }
-
-        if (_balance == count && recipient == _owner) {
-            _deployIndex();
-            _updateSalt(false);
-        }
-    }
-
-    function _afterTokenBurn(
-        uint128 /*count*/,
-        address remainingGasTo
-    ) internal view virtual {
-        if (_balance == 0) {
-            _destructIndex(remainingGasTo);
+        if (balance_ == 0) {
             _updateSalt(true);
         }
     }
 
-    function _afterTokenTransferBounce(
-        uint128 count,
-        address /*recipient*/
-    ) internal view virtual {
-        if (_balance == count) {
-            _deployIndex();
+    function _acceptTransfer(
+        uint128 _amount,
+        address /*_sender*/,
+        address /*_senderWallet*/,
+        address /*_remainingGasTo*/,
+        bool /*_notify*/,
+        TvmCell /*_payload*/
+    ) internal override {
+        balance_ += _amount;
+
+        if (balance_ == _amount) {
             _updateSalt(false);
         }
     }
 
-    function _updateSalt(bool isEmpty) internal view {
+    function _mint(
+        uint128 _amount,
+        address /*_remainingGasTo*/,
+        bool /*_notify*/,
+        TvmCell /*_payload*/
+    ) internal override {
+        balance_ += _amount;
+
+        if (balance_ == _amount) {
+            _updateSalt(false);
+        }
+    }
+
+    function _burn(
+        uint128 _amount,
+        address _remainingGasTo,
+        address _callbackTo,
+        TvmCell _payload
+    ) internal override {
+        require(_amount > 0, TokenErrors.WRONG_AMOUNT);
+        require(_amount <= balance_, TokenErrors.NOT_ENOUGH_BALANCE);
+
+        tvm.rawReserve(_reserve(), 0);
+
+        balance_ -= _amount;
+
+        if (balance_ == 0) {
+            _updateSalt(true);
+        }
+
+        ITokenRoot(root_)
+            .acceptBurn{
+                value: 0,
+                flag: TokenMsgFlag.ALL_NOT_RESERVED,
+                bounce: true
+            }(
+                _amount,
+                owner_,
+                _remainingGasTo,
+                _callbackTo,
+                _payload
+            );
+    }
+
+    function _transferBounce(
+        uint128 _amount,
+        address /*_revertedFrom*/
+    ) internal override {
+        balance_ += _amount;
+
+        if (balance_ == _amount) {
+            _updateSalt(false);
+        }
+    }
+
+    function _updateSalt(bool _isEmpty) view internal {
         TvmBuilder salt;
 
         salt.store(_collection);
         salt.store(_id);
-        salt.store(isEmpty);
+        salt.store(_isEmpty);
 
-        TvmCell emptySaltCode = tvm.setCodeSalt(tvm.code(), salt.toCell());
+        TvmCell newCode = tvm.setCodeSalt(tvm.code(), salt.toCell());
 
-        tvm.setcode(emptySaltCode);
-        tvm.setCurrentCode(emptySaltCode);
+        tvm.setcode(newCode);
+        tvm.setCurrentCode(newCode);
     }
 
     function _deployWallet(
-        TvmCell tokenState,
-        uint128 deployWalletValue,
-        address remainingGasTo
-    ) internal view returns (address) {
+        TvmCell _initData,
+        uint128 _deployWalletValue,
+        address _remainingGasTo
+    )
+        internal
+        view
+        override
+        returns (address)
+    {
         TvmCell empty;
-        TvmCell params = abi.encode(
-            MultiTokenWalletData({
-                nft: _nft,
-                balance: 0,
-                codeIndex: _codeIndex,
-                callback: CallbackData(false, address(0), empty)
-            })
-        );
 
-        address wallet = new MultiTokenWalletPlatform{
-            stateInit: tokenState,
-            value: deployWalletValue,
+        return new MultiTokenWalletPlatform{
+            stateInit: _initData,
+            value: _deployWalletValue,
+            wid: address(this).wid,
             flag: MsgFlag.SENDER_PAYS_FEES
         }(
             tvm.code(),
-            params,
-            _owner,
-            remainingGasTo
+            empty,
+            owner_,
+            _remainingGasTo
         );
-
-        return wallet;
     }
 }

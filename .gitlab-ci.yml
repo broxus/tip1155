@@ -11,7 +11,7 @@ prepare-job:
   script:
     - mv .env.template .env
     - git config --global url.https://github.com/.insteadOf git://github.com/
-    - npm ci
+    - yarn --network-concurrency 1
     - echo "Prepare is completed"
   artifacts:
     paths:
@@ -22,7 +22,7 @@ prepare-job:
 lint-job:
   stage: lint
   script:
-    - npm run lint
+    - yarn lint
     - echo "Lint is completed"
   needs:
     - job: prepare-job
@@ -31,7 +31,7 @@ lint-job:
 build-job:
   stage: build
   script:
-    - npm run build
+    - yarn build
     - echo "Build is completed"
   needs:
     - job: prepare-job
@@ -44,7 +44,7 @@ build-job:
 test-job:
   stage: test
   script:
-    - npm run test:nb
+    - yarn test
     - echo "Test is completed"
   needs:
     - job: prepare-job
