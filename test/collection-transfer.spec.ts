@@ -2,36 +2,38 @@ import { Address, Contract, toNano } from 'locklift';
 import { expect } from 'chai';
 
 import { MultiTokenCollectionAbi } from '../build/factorySource';
+import { Contracts } from './helpers';
 
 describe('Test collection transferring', () => {
   let owner: Address;
   let user: Address;
-  let collectionWithRoyalty: Contract<MultiTokenCollectionAbi>;
+  let collection: Contract<MultiTokenCollectionAbi>;
 
   before('deploy contracts', async () => {
     await locklift.deployments.fixture();
 
     owner = locklift.deployments.getAccount('Owner').account.address;
     user = locklift.deployments.getAccount('User').account.address;
-    collectionWithRoyalty =
+    collection =
       locklift.deployments.getContract<MultiTokenCollectionAbi>('Collection');
   });
 
   it('transferOwnership', async () => {
     const { traceTree } = await locklift.tracing.trace(
-      collectionWithRoyalty.methods
+      collection.methods
         .transferOwnership({
           newOwner: user,
         })
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const event = traceTree.findEventsForContract({
-      contract: collectionWithRoyalty,
-      name: 'OwnershipTransferred' as const,
-    })[0];
+    const event = Contracts.getFirstEvent(
+      traceTree!,
+      collection,
+      'OwnershipTransferred' as const,
+    );
 
-    const newOwner = await collectionWithRoyalty.methods
+    const newOwner = await collection.methods
       .owner()
       .call()
       .then((r) => r.value0);

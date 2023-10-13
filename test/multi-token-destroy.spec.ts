@@ -5,7 +5,8 @@ import {
   MultiTokenCollectionAbi,
   MultiTokenWalletAbi,
 } from '../build/factorySource';
-import nft from '../nft.json';
+import { Project } from '../assets/project';
+import { Contracts } from './helpers';
 
 const TOTAL = '100';
 
@@ -23,25 +24,35 @@ describe('Test multi token destroying', () => {
 
     const { traceTree } = await locklift.tracing.trace(
       collection.methods
-        .mintToken({
-          answerId: 0,
-          tokenOwner: owner,
-          json: JSON.stringify(nft),
-          count: TOTAL,
-          remainingGasTo: owner,
-          notify: false,
-          payload: '',
+        .mintNft({
+          _owner: owner,
+          _json: JSON.stringify(Project),
         })
         .send({ from: owner, amount: toNano(2) }),
     );
 
-    const id = traceTree.findEventsForContract({
-      contract: collection,
-      name: 'MultiTokenCreated' as const,
-    })[0].id;
+    const event = Contracts.getFirstEvent(
+      traceTree!,
+      collection,
+      'NftCreated' as const,
+    );
+
+    await locklift.transactions.waitFinalized(
+      collection.methods
+        .mint({
+          _nft: event.nft,
+          _amount: TOTAL,
+          _notify: false,
+          _payload: '',
+          _deployWalletValue: toNano(0.1),
+          _remainingGasTo: owner,
+          _recipient: owner,
+        })
+        .send({ from: owner, amount: toNano(3) }),
+    );
 
     wallet = await collection.methods
-      .multiTokenWalletAddress({ answerId: 0, id: id, owner: owner })
+      .multiTokenWalletAddress({ answerId: 0, _id: event.id, _owner: owner })
       .call()
       .then((r) =>
         locklift.factory.getDeployedContract('MultiTokenWallet', r.value0),
@@ -53,7 +64,7 @@ describe('Test multi token destroying', () => {
       wallet.methods
         .destroy({ remainingGasTo: owner })
         .send({ from: owner, amount: toNano(2) }),
-      { allowedCodes: { compute: [2309] } },
+      { allowedCodes: { compute: [1070] } },
     );
 
     const balance = await wallet.methods
@@ -63,17 +74,17 @@ describe('Test multi token destroying', () => {
 
     const isDeployed = await wallet
       .getFullState()
-      .then((r) => r.state.isDeployed);
+      .then((r) => r.state?.isDeployed);
 
     expect(isDeployed).to.be.true;
     return expect(balance).to.be.equal(TOTAL);
   });
 
   it('Destroy with zero balance', async () => {
-    await locklift.tracing.trace(
+    await locklift.transactions.waitFinalized(
       wallet.methods
         .burn({
-          count: TOTAL,
+          amount: TOTAL,
           remainingGasTo: owner,
           callbackTo: zeroAddress,
           payload: '',
@@ -89,7 +100,7 @@ describe('Test multi token destroying', () => {
 
     const isDeployed = await wallet
       .getFullState()
-      .then((r) => r.state.isDeployed);
+      .then((r) => !!r.state?.isDeployed);
 
     return expect(isDeployed).to.be.false;
   });

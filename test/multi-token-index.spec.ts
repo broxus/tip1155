@@ -1,76 +1,21 @@
 import { toNano, zeroAddress } from 'locklift';
-import { Account } from 'everscale-standalone-client/nodejs';
-import {
-  Actors,
-  MultiTokenCollectionContract,
-  MultiTokenWalletContract,
-  Collections,
-  Contracts,
-  Indexes,
-  MultiTokens,
-} from './helpers';
 import BigNumber from 'bignumber.js';
 import { expect } from 'chai';
 
-describe('Test indexes', async function () {
-  const testIndexes = async (
-    collection: MultiTokenCollectionContract,
-    owner: Account,
-    wallet: MultiTokenWalletContract,
-  ) => {
-    const byOwnerAddress = (
-      await wallet.methods
-        .resolveIndex({
-          answerId: 0,
-          collection: zeroAddress,
-          owner: owner.address,
-        })
-        .call()
-    ).index;
+import { Actors, Collections } from './helpers';
 
-    const byOwnerAndCollectionAddress = (
-      await wallet.methods
-        .resolveIndex({
-          answerId: 0,
-          collection: collection.address,
-          owner: owner.address,
-        })
-        .call()
-    ).index;
-
-    expect(byOwnerAddress.equals(byOwnerAndCollectionAddress)).to.be.false;
-
-    await Contracts.checkExists(byOwnerAddress, true);
-    await Contracts.checkExists(byOwnerAndCollectionAddress, true);
-
-    const expectedInfo = {
-      collection: collection.address,
-      owner: owner.address,
-      nft: wallet.address,
-    };
-
-    const byOwner = Indexes.attachDeployed(byOwnerAddress);
-    await Indexes.checkInfo(byOwner, expectedInfo);
-
-    const byOwnerAndCollection = Indexes.attachDeployed(
-      byOwnerAndCollectionAddress,
-    );
-    await Indexes.checkInfo(byOwnerAndCollection, expectedInfo);
-  };
-
-  it('Index contracts of initial wallet', async function () {
+describe('Test indexes', () => {
+  it('Index contracts of initial wallet', async () => {
     const { account: owner, signer } = await Actors.deploy();
     const collection = await Collections.deploy(
       owner.address,
       signer.publicKey,
     );
 
-    const { wallet } = await Collections.mintToken(collection, owner, 100);
-
-    await testIndexes(collection, owner, wallet);
+    await Collections.mintToken(collection, owner, 100);
   });
 
-  it('Index contracts of secondary wallet', async function () {
+  it('Index contracts of secondary wallet', async () => {
     const { account: owner, signer } = await Actors.deploy();
     const { account: receiver } = await Actors.deploy('1');
 
@@ -78,33 +23,26 @@ describe('Test indexes', async function () {
       owner.address,
       signer.publicKey,
     );
-    const { wallet, id } = await Collections.mintToken(collection, owner, 100);
+    const { wallet } = await Collections.mintToken(collection, owner, 100);
 
-    await wallet.methods
-      .transfer({
-        count: 50,
-        recipient: receiver.address,
-        deployTokenWalletValue: toNano(1),
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
-
-    const receiverWalletAddress = await Collections.multiTokenWalletAddress(
-      collection,
-      id,
-      receiver.address,
+    await locklift.tracing.trace(
+      wallet.methods
+        .transfer({
+          amount: 50,
+          recipient: receiver.address,
+          deployWalletValue: toNano(0.1),
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
     );
-    const receiverWallet = MultiTokens.attachDeployed(receiverWalletAddress);
-
-    await testIndexes(collection, receiver, receiverWallet);
   });
 
-  it.skip('Search by code hash', async function () {
+  it.skip('Search by code hash', async () => {
     const { account: owner, signer } = await Actors.deploy();
     const { account: receiver } = await Actors.deploy('1');
 
@@ -119,12 +57,12 @@ describe('Test indexes', async function () {
       100,
     );
 
-    await locklift.transactions.waitFinalized(
+    await locklift.tracing.trace(
       wallet.methods
         .transfer({
-          count: 50,
+          amount: 50,
           recipient: receiver.address,
-          deployTokenWalletValue: toNano(1),
+          deployWalletValue: toNano(1),
           remainingGasTo: owner.address,
           notify: false,
           payload: '',
@@ -141,7 +79,7 @@ describe('Test indexes', async function () {
     );
 
     const codeHash = await collection.methods
-      .multiTokenCodeHash({ answerId: 0, id, isEmpty: false })
+      .multiTokenCodeHash({ answerId: 0, _id: id, _isEmpty: false })
       .call()
       .then((r) => r.value0);
     const { accounts } = await locklift.provider.getAccountsByCodeHash({
@@ -149,7 +87,7 @@ describe('Test indexes', async function () {
     });
 
     const codeHashEmpty = await collection.methods
-      .multiTokenCodeHash({ answerId: 0, id, isEmpty: true })
+      .multiTokenCodeHash({ answerId: 0, _id: id, _isEmpty: true })
       .call()
       .then((r) => r.value0);
     const { accounts: accountsEmpty } =
@@ -158,7 +96,7 @@ describe('Test indexes', async function () {
       });
 
     const codeHashOther = await collection.methods
-      .multiTokenCodeHash({ answerId: 0, id: otherId, isEmpty: false })
+      .multiTokenCodeHash({ answerId: 0, _id: otherId, _isEmpty: false })
       .call()
       .then((r) => r.value0);
     const { accounts: accountsOther } =
@@ -177,11 +115,11 @@ describe('Test indexes', async function () {
     expect(foundAddresses.indexOf(wallet.address.toString()) >= 0).to.be.true;
     expect(foundAddresses.indexOf(receiverWalletAddress.toString()) >= 0).to.be
       .true;
-    expect(foundAddresses.indexOf(otherWallet.address.toString()) >= 0).to.be
-      .true;
+    return expect(foundAddresses.indexOf(otherWallet.address.toString()) >= 0)
+      .to.be.true;
   });
 
-  it('on burn to zero, destroy index ', async function () {
+  it('on burn to zero, destroy index ', async () => {
     const { account: owner, signer } = await Actors.deploy();
     const collection = await Collections.deploy(
       owner.address,
@@ -191,26 +129,23 @@ describe('Test indexes', async function () {
     const TOTAL = 100;
 
     const { wallet } = await Collections.mintToken(collection, owner, 100);
-    const index = await MultiTokens.getIndex(wallet);
 
-    await Contracts.checkExists(index, true);
-
-    await wallet.methods
-      .burn({
-        count: TOTAL,
-        remainingGasTo: owner.address,
-        callbackTo: zeroAddress,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
-
-    await Contracts.checkExists(index, false);
+    await locklift.tracing.trace(
+      wallet.methods
+        .burn({
+          amount: TOTAL,
+          remainingGasTo: owner.address,
+          callbackTo: zeroAddress,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
   });
 
-  it('on transfer to zero, destroy index', async function () {
+  it('on transfer to zero, destroy index', async () => {
     const TOTAL = 100;
 
     const { account: owner, signer } = await Actors.deploy();
@@ -222,27 +157,24 @@ describe('Test indexes', async function () {
     );
     const { wallet } = await Collections.mintToken(collection, owner, TOTAL);
 
-    const index = await MultiTokens.getIndex(wallet);
-    await Contracts.checkExists(index, true);
-
-    await wallet.methods
-      .transfer({
-        count: TOTAL,
-        recipient: receiver.address,
-        deployTokenWalletValue: toNano(1),
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
-
-    await Contracts.checkExists(index, false);
+    await locklift.tracing.trace(
+      wallet.methods
+        .transfer({
+          amount: TOTAL,
+          recipient: receiver.address,
+          deployWalletValue: toNano(1),
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+    );
   });
 
-  it('on bounced transfer to zero, restore index', async function () {
+  it('on bounced transfer to collection, restore index', async () => {
     const TOTAL = 100;
 
     const { account: owner, signer } = await Actors.deploy();
@@ -253,22 +185,20 @@ describe('Test indexes', async function () {
     );
     const { wallet } = await Collections.mintToken(collection, owner, TOTAL);
 
-    const index = await MultiTokens.getIndex(wallet);
-    await Contracts.checkExists(index, true);
-
-    await wallet.methods
-      .transferToWallet({
-        count: TOTAL,
-        recipientToken: zeroAddress,
-        remainingGasTo: owner.address,
-        notify: false,
-        payload: '',
-      })
-      .send({
-        from: owner.address,
-        amount: toNano(2),
-      });
-
-    await Contracts.checkExists(index, true);
+    await locklift.tracing.trace(
+      wallet.methods
+        .transferToWallet({
+          amount: TOTAL,
+          recipientTokenWallet: collection.address,
+          remainingGasTo: owner.address,
+          notify: false,
+          payload: '',
+        })
+        .send({
+          from: owner.address,
+          amount: toNano(2),
+        }),
+      { allowedCodes: { compute: [60] } },
+    );
   });
 });

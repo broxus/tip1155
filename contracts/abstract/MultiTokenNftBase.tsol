@@ -1,0 +1,71 @@
+pragma ever-solidity >= 0.62.0;
+
+import "@broxus/tip3/contracts/abstract/TokenRootBurnableByRootBase.tsol";
+import "@broxus/tip4/contracts/Nft.tsol";
+
+import "../libraries/MultiTokenGas.tsol";
+
+import "../MultiTokenWalletPlatform.tsol";
+
+abstract contract MultiTokenNftBase is Nft, TokenRootBurnableByRootBase {
+    TvmCell internal _walletPlatformCode;
+
+    function _buildWalletInitData(address _walletOwner)
+        internal
+        view
+        override
+        returns (TvmCell)
+    {
+        return tvm.buildStateInit({
+            contr: MultiTokenWalletPlatform,
+            varInit: {
+                nft: address(this),
+                owner: _walletOwner
+            },
+            pubkey: 0,
+            code: _walletPlatformCode
+        });
+    }
+
+    function _buildMultiTokenWalletCode(bool _isEmpty) internal view returns (TvmCell) {
+        TvmBuilder salt;
+
+        salt.store(_collection);
+        salt.store(_id);
+        salt.store(_isEmpty);
+
+        return tvm.setCodeSalt(walletCode_, salt.toCell());
+    }
+
+    function _deployWallet(
+        TvmCell _initData,
+        uint128 _deployWalletValue,
+        address _remainingGasTo
+    ) internal view override returns (address) {
+        TvmCell empty;
+
+        return new MultiTokenWalletPlatform{
+            stateInit: _initData,
+            value: _deployWalletValue,
+            wid: address(this).wid,
+            flag: MsgFlag.SENDER_PAYS_FEES
+        }(
+            _buildMultiTokenWalletCode(true),
+            empty,
+            address(0),
+            _remainingGasTo
+        );
+    }
+
+    function _targetBalance() internal pure override returns (uint128) {
+        return MultiTokenGas.TARGET_NFT_BALANCE;
+    }
+
+    function _mintEnabled() internal view override returns (bool) {
+        return true;
+    }
+
+    function _burnEnabled() internal view override returns (bool) {
+        return true;
+    }
+}

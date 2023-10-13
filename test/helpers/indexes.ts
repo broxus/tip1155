@@ -1,6 +1,7 @@
 import { Address, Contract } from 'locklift';
-import { FactorySource } from 'build/factorySource';
 import { expect } from 'chai';
+
+import { FactorySource } from '../../build/factorySource';
 
 export declare type IndexContract = Contract<FactorySource['Index']>;
 
@@ -26,19 +27,22 @@ export class Indexes {
     },
   ) {
     const actual = await Indexes.getInfo(contract);
-    if (expected.collection !== undefined) {
+
+    if (expected.collection) {
       expect(actual.collection.toString()).to.be.eq(
         expected.collection.toString(),
         'Wrong index collection',
       );
     }
-    if (expected.owner !== undefined) {
+
+    if (expected.owner) {
       expect(actual.owner.toString()).to.be.eq(
         expected.owner.toString(),
         'Wrong index owner',
       );
     }
-    if (expected.nft !== undefined) {
+
+    if (expected.nft) {
       expect(actual.nft.toString()).to.be.eq(
         expected.nft.toString(),
         'Wrong index token address',

@@ -14,12 +14,13 @@ type EventNames<Abi> = DecodedEventWithTransaction<
 
 export class Contracts {
   static async exists(address: Address): Promise<boolean> {
-    const { state } = await locklift.provider.getFullContractState({ address });
-    return !!(state && state.isDeployed);
+    return locklift.provider
+      .getFullContractState({ address })
+      .then((r) => !!r.state?.isDeployed);
   }
 
   static async getContractBalance(address: Address): Promise<number> {
-    return Number(await locklift.provider.getBalance(address));
+    return locklift.provider.getBalance(address).then((r) => +r);
   }
 
   static async getCodeHash(address: Address): Promise<string | undefined> {
@@ -38,20 +39,23 @@ export class Contracts {
     expect(actual).to.be.eq(expected, 'Wrong contract balance');
   }
 
-  static getFirstEvent<T>(
-    traceTree: ViewTracingTree,
-    contract: Contract<T>,
-    eventName: EventNames<T>,
-  ): any {
+  static getFirstEvent<
+    /* eslint-disable */
+    C extends Contract<any>,
+    Abi extends C extends Contract<infer f> ? f : never,
+    N extends EventNames<Abi>,
+  >(traceTree: ViewTracingTree, contract: C, eventName: N) {
     const events = traceTree?.findEventsForContract({
       contract,
       name: eventName,
     });
+
     expect(events).not.to.be.eq(
       undefined,
       `Events not found. Expected: ${eventName}`,
     );
     expect(events.length).to.be.above(0, `Event ${eventName} not found`);
+
     return events[0];
   }
 }

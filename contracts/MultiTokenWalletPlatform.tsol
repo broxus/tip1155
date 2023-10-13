@@ -1,44 +1,40 @@
-pragma ever-solidity >= 0.58.0;
-
-import "@broxus/ever-contracts/contracts/libraries/MsgFlag.tsol";
+pragma ever-solidity >= 0.62.0;
 
 import "./structures/IMultiTokenWalletPlatformData.tsol";
 
-contract MultiTokenWalletPlatform is IMultiTokenWalletPlatformData {
-    uint256 static _id;
-    address static _collection;
-    address static _owner;
+contract MultiTokenWalletPlatform {
+    address static nft;
+    address static owner;
 
     constructor(
         TvmCell _walletCode,
-        TvmCell _params,
+        TvmCell _extra,
         address _sender,
         address _remainingGasTo
     )
         public
-        functionID(0x60903B64)
+        functionID(0x60903b64)
     {
         if (
-            msg.sender == _collection ||
+            msg.sender == nft ||
             (_sender.value != 0 && _getExpectedAddress(_sender) == msg.sender)
         ) {
-           initialize(_walletCode, _params, _remainingGasTo);
+           _initialize(_walletCode, _extra, _remainingGasTo);
         } else {
             _remainingGasTo.transfer({
                 value: 0,
-                flag: MsgFlag.ALL_NOT_RESERVED + MsgFlag.DESTROY_IF_ZERO,
+                flag: 128 + 32,
                 bounce: false
             });
         }
     }
 
-    function _getExpectedAddress(address _walletOwner) private view returns (address) {
+    function _getExpectedAddress(address _owner) private view returns (address) {
         TvmCell stateInit = tvm.buildStateInit({
             contr: MultiTokenWalletPlatform,
             varInit: {
-                _id: _id,
-                _collection: _collection,
-                _owner: _walletOwner
+                nft: nft,
+                owner: _owner
             },
             pubkey: 0,
             code: tvm.code()
@@ -47,19 +43,18 @@ contract MultiTokenWalletPlatform is IMultiTokenWalletPlatformData {
         return address(tvm.hash(stateInit));
     }
 
-    function initialize(
+    function _initialize(
         TvmCell _walletCode,
-        TvmCell _params,
+        TvmCell _extra,
         address _remainingGasTo
     ) private {
         TvmCell data = abi.encode(
-            MultiTokenWalletPlatformData({
-                id: _id,
-                collection: _collection,
-                owner: _owner,
-                remainingGasTo: _remainingGasTo,
-                params: _params,
-                platformCode: tvm.code()
+            IMultiTokenWalletPlatformData.MultiTokenWalletPlatformData({
+                root: nft,
+                owner: owner,
+                platformCode: tvm.code(),
+                extra: _extra,
+                remainingGasTo: _remainingGasTo
             })
 		);
 

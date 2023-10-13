@@ -1,40 +1,36 @@
-import { getRandomNonce, toNano, zeroAddress } from 'locklift';
+import { getRandomNonce, toNano } from 'locklift';
 
-import collection from '../collection.json';
+import { Collection } from '../assets/collection';
 
 export default async (): Promise<void> => {
-  const signer = await locklift.keystore.getSigner('0');
-  const owner = locklift.deployments.getAccount('Owner').account;
+  const owner = locklift.deployments.getAccount('Owner');
 
-  const platformArtifacts = locklift.factory.getContractArtifacts(
+  const PlatformCode = locklift.factory.getContractArtifacts(
     'MultiTokenWalletPlatform',
-  );
-  const nftArtifacts = locklift.factory.getContractArtifacts('MultiTokenNft');
-  const walletArtifacts =
-    locklift.factory.getContractArtifacts('MultiTokenWallet');
-  const indexArtifacts = locklift.factory.getContractArtifacts('Index');
-  const indexBasisArtifacts =
-    locklift.factory.getContractArtifacts('IndexBasis');
+  ).code;
+  const NftCode = locklift.factory.getContractArtifacts('MultiTokenNft').code;
+  const WalletCode =
+    locklift.factory.getContractArtifacts('MultiTokenWallet').code;
+  const IndexCode = locklift.factory.getContractArtifacts('Index').code;
+  const IndexBasisCode =
+    locklift.factory.getContractArtifacts('IndexBasis').code;
 
   await locklift.deployments.deploy({
     deploymentName: 'Collection',
     deployConfig: {
       contract: 'MultiTokenCollection',
       constructorParams: {
-        codeNft: nftArtifacts.code,
-        codeWallet: walletArtifacts.code,
-        codeIndex: indexArtifacts.code,
-        codeIndexBasis: indexBasisArtifacts.code,
-        ownerAddress: owner.address,
-        json: JSON.stringify(collection.collectionJson),
-        remainingGasTo: owner.address,
+        _initialPlatformCode: PlatformCode,
+        _initialNftCode: NftCode,
+        _initialWalletCode: WalletCode,
+        _initialIndexCode: IndexCode,
+        _initialIndexBasisCode: IndexBasisCode,
+        _initialOwner: owner.account.address,
+        _initialJson: JSON.stringify(Collection),
+        _remainingGasTo: owner.account.address,
       },
-      initParams: {
-        _deployer: zeroAddress,
-        nonce_: getRandomNonce(),
-        _platformCode: platformArtifacts.code,
-      },
-      publicKey: signer.publicKey,
+      initParams: { nonce_: getRandomNonce() },
+      publicKey: owner.signer.publicKey,
       value: toNano(10),
     },
     enableLogs: true,

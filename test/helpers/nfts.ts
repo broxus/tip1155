@@ -1,6 +1,7 @@
 import { Address, Contract } from 'locklift';
-import { FactorySource } from 'build/factorySource';
 import { expect } from 'chai';
+
+import { FactorySource } from '../../build/factorySource';
 
 export declare type NftContract = Contract<FactorySource['MultiTokenNft']>;
 
@@ -19,7 +20,10 @@ export class Nfts {
   }
 
   static async getJson(contract: NftContract): Promise<string> {
-    return (await contract.methods.getJson({ answerId: 0 }).call()).json;
+    return contract.methods
+      .getJson({ answerId: 0 })
+      .call()
+      .then((r) => r.json);
   }
 
   static async checkInfo(
@@ -32,22 +36,26 @@ export class Nfts {
     },
   ) {
     const actual = await Nfts.getInfo(contract);
-    if (expected.collection !== undefined) {
+
+    if (expected.collection) {
       expect(actual.collection.toString()).to.be.eq(
         expected.collection.toString(),
         'Wrong NFT collection',
       );
     }
-    if (expected.id !== undefined) {
+
+    if (expected.id) {
       expect(actual.id).to.be.eq(expected.id, 'Wrong NFT id');
     }
-    if (expected.owner !== undefined) {
+
+    if (expected.owner) {
       expect(actual.owner.toString()).to.be.eq(
         expected.owner.toString(),
         'Wrong NFT owner',
       );
     }
-    if (expected.manager !== undefined) {
+
+    if (expected.manager) {
       expect(actual.manager.toString()).to.be.eq(
         expected.manager.toString(),
         'Wrong NFT manager',
@@ -62,9 +70,9 @@ export class Nfts {
 
   static async getMultiTokenSupply(contract: NftContract): Promise<string> {
     return contract.methods
-      .multiTokenSupply({ answerId: 0 })
+      .totalSupply({ answerId: 0 })
       .call()
-      .then((k) => k.count);
+      .then((k) => k.value0);
   }
 
   static async checkMultiTokenSupply(contract: NftContract, expected: number) {

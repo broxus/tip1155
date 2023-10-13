@@ -1,12 +1,11 @@
-pragma ever-solidity >= 0.58.0;
+pragma ever-solidity >= 0.62.0;
 
 interface IMultiTokenWalletPlatformData {
     struct MultiTokenWalletPlatformData {
-        uint256 id;
-        address collection;
+        address root;
         address owner;
-        address remainingGasTo;
-        TvmCell params;
         TvmCell platformCode;
+        TvmCell extra;
+        address remainingGasTo;
     }
 }

@@ -1,80 +1,56 @@
-pragma ever-solidity >= 0.58.0;
+pragma ever-solidity >= 0.62.0;
 
 pragma AbiHeader expire;
 pragma AbiHeader time;
 pragma AbiHeader pubkey;
 
-import "@broxus/ever-contracts/contracts/libraries/MsgFlag.tsol";
-import "@broxus/tip4/contracts/Nft.tsol";
+import "./abstract/MultiTokenNftBase.tsol";
 
-import "./interfaces/IMultiTokenNft.tsol";
-
-import "./libraries/MultiTokenErrors.tsol";
-import "./libraries/MultiTokenGas.tsol";
-
-contract MultiTokenNft is Nft, IMultiTokenNft {
-    uint128 internal _tokenSupply;
-
-    modifier onlyCollection() {
-        require(
-            msg.sender == _collection && msg.sender.value != 0,
-            MultiTokenErrors.SENDER_NOT_COLLECTION
-        );
-        _;
-    }
-
+contract MultiTokenNft is MultiTokenNftBase {
     constructor(
-        address owner,
-        address sendGasTo,
-        uint128 remainOnNft,
-        string json,
-        TvmCell codeIndex,
-        uint128 tokenSupply
-    ) Nft(
-        owner,
-        sendGasTo,
-        remainOnNft,
-        json,
+        address _initialOwner,
+        address _remainingGasTo,
+        uint128 _remainOnNft,
+        string _initialJson,
+        TvmCell _initialIndexCode,
+        TvmCell _initialWalletCode,
+        TvmCell _initialPlatformCode,
+        uint128 _totalSupply,
+        string _name,
+        string _symbol
+    ) Nft (
+        _initialOwner,
+        _remainingGasTo,
+        _remainOnNft,
+        _initialJson,
         MultiTokenGas.INDEX_DEPLOY_VALUE,
         MultiTokenGas.INDEX_DESTROY_VALUE,
-        codeIndex
+        _initialIndexCode
     ) public {
-        _tokenSupply = tokenSupply;
-        _supportedInterfaces[bytes4(tvm.functionId(IMultiTokenNft.multiTokenSupply))] = true;
-    }
+        // TIP-1155
+        _walletPlatformCode = _initialPlatformCode;
+        _supportedInterfaces[
+            bytes4(0x4371d8ed) ^    // TIP-3.1
+            bytes4(0x0b1fd263) ^    // TIP-3.2
+            bytes4(0x78084f7e) ^    // TIP-4.1
+            bytes4(0x24d7d5f5)      // TIP-4.2
+        ] = true;   // TIP-1155
 
-    function multiTokenSupply()
-        external
-        view
-        override
-        responsible
-        returns (uint128 count)
-    {
-        return {
-            value: 0,
-            flag: MsgFlag.REMAINING_GAS,
-            bounce: false
-        } _tokenSupply;
-    }
+        // TIP-3
+        name_ = _name;
+        symbol_ = _symbol;
+        decimals_ = 0;
 
-    function burnToken(
-        uint128 count,
-        uint256 /*id*/,
-        address /*owner*/,
-        TvmCell payload
-    )
-        external
-        override
-        responsible
-        onlyCollection
-        returns (uint128 tokenSupply, TvmCell next)
-    {
-        _tokenSupply -= count;
+        rootOwner_ = _collection;
+        walletCode_ = _initialWalletCode;
+        totalSupply_ = _totalSupply;
+        burnByRootDisabled_ = false;
 
-        return {
-            value: 0,
-            flag: MsgFlag.REMAINING_GAS,
-            bounce: false
-        } (_tokenSupply, payload);
+        _supportedInterfaces[bytes4(0x4371d8ed)] = true;    // TIP-3.1
+        _supportedInterfaces[bytes4(0x0b1fd263)] = true;    // TIP-3.2
+        _supportedInterfaces[bytes4(0x18f7cce4)] = true;    // IBurnableByRootTokenRoot
+
+        // TIP-4
+        _manager = _collection;
     }
 }
