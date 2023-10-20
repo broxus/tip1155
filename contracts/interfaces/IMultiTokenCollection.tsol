@@ -16,6 +16,11 @@ interface IMultiTokenCollection {
     /// @return token Returns the address of MultiToken wallet contract
     function multiTokenWalletAddress(uint256 _id, address _owner) external view responsible returns (address token);
 
+    /// @notice Returns the MultiTokenWalletPlatform code hash and its depth
+    /// @return hash Code hash of platform
+    /// @return depth Code depth of platform
+    function platformCodeInfo() external view responsible returns (uint256 hash, uint16 depth);
+
     /// @notice Destroys MultiTokenNft by its address
     /// @dev Only collection's owner can call
     /// @param _nft MultiTokenNft address to destroy

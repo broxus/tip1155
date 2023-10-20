@@ -52,6 +52,20 @@ abstract contract MultiTokenCollectionBase is Collection, IMultiTokenCollection 
         } _resolveMultiTokenWallet(_id, _owner);
     }
 
+    function platformCodeInfo()
+        external
+        view
+        override
+        responsible
+        returns (uint256 hash, uint16 depth)
+    {
+        return {
+            value: 0,
+            flag: MsgFlag.REMAINING_GAS,
+            bounce: false
+        } (tvm.hash(_platformCode), _platformCode.depth());
+    }
+
     function _buildMultiTokenWalletCode(uint256 _nftId, bool _isEmpty)
         internal
         view
