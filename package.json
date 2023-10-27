@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@broxus/ever-contracts": "git://github.com/broxus/ever-contracts#1643b6b",
-    "@broxus/tip3": "git://github.com/FairyFromAlfeya/tip3#51e485b",
+    "@broxus/tip3": "git://github.com/FairyFromAlfeya/tip3#d42972b",
     "@broxus/tip4": "git://github.com/FairyFromAlfeya/tip4#73e68fd",
     "@broxus/locklift-deploy": "1.1.1",
     "@broxus/locklift-verifier": "1.0.5",

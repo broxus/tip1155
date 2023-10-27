@@ -68,4 +68,8 @@ abstract contract MultiTokenNftBase is Nft, TokenRootBurnableByRootBase {
     function _burnEnabled() internal view override returns (bool) {
         return true;
     }
+
+    function _fallback() internal override {
+        revert();
+    }
 }
