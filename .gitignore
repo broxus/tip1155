@@ -104,7 +104,7 @@ web_modules/
 out
 
 # Locklift build output and deployments
-build
+build/*.map.json
 deployments
 
 # Nuxt.js build / generate output
